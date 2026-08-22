@@ -1,16 +1,31 @@
-import { useState } from "react";
+import { Calendar, X } from "lucide-react-native";
+import { useEffect, useState } from "react";
 import {
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppTheme } from "../../context/ThemeContext";
+import CalendarPicker from "../CalendarPicker";
+
+function formatDisplayDate(value) {
+  if (!value) return "Any date";
+
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return value;
+
+  return new Date(year, month - 1, day).toLocaleDateString("en-LK", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function OrderFiltersModal({
   visible,
@@ -20,10 +35,23 @@ export default function OrderFiltersModal({
   couriers,
 }) {
   const { colors } = useAppTheme();
-  const styles = createStyles(colors);
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(colors, insets.bottom);
+
   const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? "");
   const [dateTo, setDateTo] = useState(filters.dateTo ?? "");
   const [courierId, setCourierId] = useState(filters.courierId ?? "");
+  const [openCalendar, setOpenCalendar] = useState(null);
+
+  // Re-sync when reopened, so a cancelled edit does not linger.
+  useEffect(() => {
+    if (visible) {
+      setDateFrom(filters.dateFrom ?? "");
+      setDateTo(filters.dateTo ?? "");
+      setCourierId(filters.courierId ?? "");
+      setOpenCalendar(null);
+    }
+  }, [visible, filters]);
 
   function handleApply() {
     onApply({ dateFrom, dateTo, courierId });
@@ -38,51 +66,89 @@ export default function OrderFiltersModal({
     onClose();
   }
 
+  function renderDateField(label, value, onChange, calendarKey) {
+    const isOpen = openCalendar === calendarKey;
+
+    return (
+      <View style={styles.field}>
+        <View style={styles.fieldHeader}>
+          <Text style={styles.label}>{label}</Text>
+          {value ? (
+            <TouchableOpacity onPress={() => onChange("")} hitSlop={8}>
+              <Text style={styles.clearText}>Clear</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.dateButton, isOpen && styles.dateButtonActive]}
+          onPress={() => setOpenCalendar(isOpen ? null : calendarKey)}
+        >
+          <Calendar size={16} color={value ? colors.accent : colors.subtle} />
+          <Text style={[styles.dateText, !value && styles.dateTextEmpty]}>
+            {formatDisplayDate(value)}
+          </Text>
+        </TouchableOpacity>
+
+        {isOpen && (
+          <View style={styles.calendarWrapper}>
+            <CalendarPicker
+              value={value}
+              onSelect={(nextValue) => {
+                onChange(nextValue);
+                setOpenCalendar(null);
+              }}
+              // Keep the range coherent: "from" cannot pass "to", and vice versa.
+              minDate={calendarKey === "to" ? dateFrom : undefined}
+              maxDate={calendarKey === "from" ? dateTo : undefined}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
-          <Text style={styles.title}>Filters</Text>
-
-          <Text style={styles.label}>Date from (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.input}
-            value={dateFrom}
-            onChangeText={setDateFrom}
-            placeholder="2026-01-01"
-            placeholderTextColor={colors.subtle}
-          />
-
-          <Text style={styles.label}>Date to (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.input}
-            value={dateTo}
-            onChangeText={setDateTo}
-            placeholder="2026-12-31"
-            placeholderTextColor={colors.subtle}
-          />
-
-          <Text style={styles.label}>Courier</Text>
-          <ScrollView style={styles.courierList}>
-            <TouchableOpacity
-              style={[styles.courierRow, courierId === "" && styles.courierRowActive]}
-              onPress={() => setCourierId("")}
-            >
-              <Text style={styles.courierText}>Any courier</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>Filters</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <X size={20} color={colors.muted} />
             </TouchableOpacity>
+          </View>
 
-            {couriers.map((courier) => (
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {renderDateField("Date from", dateFrom, setDateFrom, "from")}
+            {renderDateField("Date to", dateTo, setDateTo, "to")}
+
+            <Text style={styles.label}>Courier</Text>
+            <View style={styles.courierList}>
               <TouchableOpacity
-                key={courier.id}
-                style={[
-                  styles.courierRow,
-                  courierId === courier.id && styles.courierRowActive,
-                ]}
-                onPress={() => setCourierId(courier.id)}
+                style={[styles.courierRow, courierId === "" && styles.courierRowActive]}
+                onPress={() => setCourierId("")}
               >
-                <Text style={styles.courierText}>{courier.name}</Text>
+                <Text style={styles.courierText}>Any courier</Text>
               </TouchableOpacity>
-            ))}
+
+              {couriers.map((courier) => (
+                <TouchableOpacity
+                  key={courier.id}
+                  style={[
+                    styles.courierRow,
+                    courierId === courier.id && styles.courierRowActive,
+                  ]}
+                  onPress={() => setCourierId(courier.id)}
+                >
+                  <Text style={styles.courierText}>{courier.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </ScrollView>
 
           <View style={styles.actionsRow}>
@@ -100,7 +166,7 @@ export default function OrderFiltersModal({
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, bottomInset) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
@@ -112,13 +178,30 @@ function createStyles(colors) {
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
       padding: 20,
-      maxHeight: "80%",
+      paddingBottom: 20 + bottomInset,
+      maxHeight: "88%",
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10,
     },
     title: {
       color: colors.textStrong,
       fontSize: 18,
       fontWeight: "700",
-      marginBottom: 14,
+    },
+    body: {
+      flexGrow: 0,
+    },
+    field: {
+      marginBottom: 6,
+    },
+    fieldHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
     },
     label: {
       color: colors.text,
@@ -127,27 +210,52 @@ function createStyles(colors) {
       marginBottom: 6,
       marginTop: 10,
     },
-    input: {
+    clearText: {
+      color: colors.accent,
+      fontSize: 12,
+      fontWeight: "600",
+      marginTop: 10,
+    },
+    dateButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 9,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 8,
       paddingHorizontal: 12,
-      paddingVertical: 9,
-      color: colors.textStrong,
+      paddingVertical: 11,
       backgroundColor: colors.background,
     },
+    dateButtonActive: {
+      borderColor: colors.accent,
+    },
+    dateText: {
+      color: colors.textStrong,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    dateTextEmpty: {
+      color: colors.subtle,
+      fontWeight: "400",
+    },
+    calendarWrapper: {
+      marginTop: 8,
+    },
     courierList: {
-      maxHeight: 160,
-      marginTop: 4,
+      marginTop: 2,
     },
     courierRow: {
-      paddingVertical: 10,
+      paddingVertical: 11,
       paddingHorizontal: 12,
       borderRadius: 8,
       marginBottom: 4,
+      borderWidth: 1,
+      borderColor: "transparent",
     },
     courierRowActive: {
       backgroundColor: colors.surfaceSoft,
+      borderColor: colors.accent,
     },
     courierText: {
       color: colors.text,
