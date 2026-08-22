@@ -15,6 +15,7 @@ import {
 
 import {
   loginWithEmail,
+  loginWithGoogle,
   logoutUser,
   registerWithEmail,
 } from "../services/authService";
@@ -33,6 +34,10 @@ function getAuthErrorMessage(error: any) {
       return "Please use a stronger password.";
     case "auth/email-not-verified":
       return "Please verify your email address before logging in.";
+    case "auth/popup-closed-by-user":
+      return "Google login was cancelled.";
+    case "auth/google-signin-unavailable":
+      return "Google sign-in needs a development build of the app — it isn't available in this preview.";
     default:
       return "Authentication failed. Please try again.";
   }
@@ -61,6 +66,22 @@ export default function LoginPage() {
     setBusinessName("");
     setEmail("");
     setPassword("");
+  }
+
+  async function handleGoogleLogin() {
+    setErrorMessage("");
+    setSuccessMessage("");
+    setIsSubmitting(true);
+
+    try {
+      await loginWithGoogle();
+      await refreshSellerProfile();
+      router.replace("/(tabs)");
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function handleSubmit() {
@@ -214,6 +235,25 @@ export default function LoginPage() {
               </Text>
             )}
           </TouchableOpacity>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.googleButton}
+            onPress={handleGoogleLogin}
+            disabled={isSubmitting}
+          >
+            <Image
+              source={require("../assets/images/google-logo.webp")}
+              style={styles.googleLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.googleButtonText}>Sign in with Google</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -322,5 +362,41 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "700",
     fontSize: 15,
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 18,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#dbe4ee",
+  },
+  dividerText: {
+    color: "#71849a",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  googleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#dbe4ee",
+    borderRadius: 10,
+    paddingVertical: 12,
+    backgroundColor: "#ffffff",
+  },
+  googleLogo: {
+    width: 20,
+    height: 20,
+  },
+  googleButtonText: {
+    color: "#102f50",
+    fontWeight: "600",
+    fontSize: 14,
   },
 });
