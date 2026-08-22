@@ -14,7 +14,6 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -24,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { STATUS_LABELS, STATUS_TRANSITIONS } from "../../constants/orderStatus";
 import { useAppTheme } from "../../context/ThemeContext";
-import { buildWaybillText } from "../../services/operationService";
+import { shareWaybillPdf } from "../../services/fileService";
 import PromptModal from "./PromptModal";
 
 // Statuses that destroy work in progress, so they always confirm first.
@@ -98,11 +97,12 @@ export default function OrderActionsMenu({
 
   function handleShareWaybill() {
     runAction(async () => {
+      // A waybill number must exist before the PDF can be printed.
       const printableOrder = order.waybillNumber
         ? order
-        : await onGenerateWaybill?.(order.id);
+        : ((await onGenerateWaybill?.(order.id)) ?? order);
 
-      await Share.share({ message: buildWaybillText(printableOrder ?? order) });
+      await shareWaybillPdf(printableOrder);
     });
   }
 
@@ -145,7 +145,7 @@ export default function OrderActionsMenu({
           disabled={isWorking}
         >
           <Printer size={18} color={colors.text} />
-          <Text style={styles.actionText}>Share waybill</Text>
+          <Text style={styles.actionText}>Waybill PDF</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

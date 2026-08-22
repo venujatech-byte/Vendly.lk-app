@@ -12,7 +12,6 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +21,7 @@ import {
 
 import { STATUS_LABELS, STATUS_TRANSITIONS } from "../../constants/orderStatus";
 import { useAppTheme } from "../../context/ThemeContext";
-import { buildWaybillText } from "../../services/operationService";
+import { shareWaybillPdf } from "../../services/fileService";
 import PromptModal from "./PromptModal";
 
 // Statuses that release reserved stock, so they always confirm first.
@@ -111,11 +110,12 @@ export default function OrderDetailsPanel({
 
   function handleShareWaybill() {
     runAction(async () => {
+      // A waybill number must exist before the PDF can be printed.
       const printableOrder = order.waybillNumber
         ? order
-        : await onGenerateWaybill?.(order.id);
+        : ((await onGenerateWaybill?.(order.id)) ?? order);
 
-      await Share.share({ message: buildWaybillText(printableOrder ?? order) });
+      await shareWaybillPdf(printableOrder);
     });
   }
 
@@ -284,7 +284,7 @@ export default function OrderDetailsPanel({
         disabled={isWorking}
       >
         <Printer size={16} color={colors.text} />
-        <Text style={styles.actionButtonText}>Share waybill</Text>
+        <Text style={styles.actionButtonText}>Waybill PDF</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

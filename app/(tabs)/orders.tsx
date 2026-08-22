@@ -37,6 +37,7 @@ import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { getCouriers } from "@/services/courierService";
+import { downloadOrderExport, shareCsv } from "@/services/fileService";
 import {
   generateOrderWaybill,
   reportCourierIssue,
@@ -68,6 +69,7 @@ export default function OrdersTab() {
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [sort, setSort] = useState(DEFAULT_ORDER_SORT);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isManualWaybillOpen, setIsManualWaybillOpen] = useState(false);
   const [isLookingUpWaybill, setIsLookingUpWaybill] = useState(false);
 
@@ -207,17 +209,34 @@ export default function OrdersTab() {
       selectedOrderIds.includes(order.id),
     );
 
-    await Share.share({ message: buildCsv(selectedOrders) });
-    setSelectedOrderIds([]);
+    try {
+      await shareCsv(buildCsv(selectedOrders), "vendly-selected-orders");
+      setSelectedOrderIds([]);
+    } catch (error) {
+      Alert.alert("Export failed", error.message ?? "Please try again.");
+    }
   }
 
+  // The full export is the server-generated XLSX workbook, so it matches the
+  // web dashboard's download rather than being a client-built approximation.
   async function handleExportAll() {
     if (visibleOrders.length === 0) {
       Alert.alert("Nothing to export", "There are no orders in the current view.");
       return;
     }
 
-    await Share.share({ message: buildCsv(visibleOrders) });
+    setIsExporting(true);
+
+    try {
+      await downloadOrderExport(business.id, {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: searchText || undefined,
+      });
+    } catch (error) {
+      Alert.alert("Export failed", error.message ?? "Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   async function handleShareChatbotLink() {
@@ -381,9 +400,19 @@ export default function OrdersTab() {
           <Text style={styles.actionButtonText}>Chatbot link</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={handleExportAll}>
-          <Download size={15} color={colors.text} />
-          <Text style={styles.actionButtonText}>Export</Text>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={handleExportAll}
+          disabled={isExporting}
+        >
+          {isExporting ? (
+            <ActivityIndicator size="small" color={colors.text} />
+          ) : (
+            <>
+              <Download size={15} color={colors.text} />
+              <Text style={styles.actionButtonText}>Export</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
