@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 
+import BarcodeScannerModal from "@/components/orders/BarcodeScannerModal";
 import BulkActionsBar from "@/components/orders/BulkActionsBar";
 import OrderActionSheet from "@/components/orders/OrderActionSheet";
 import OrderFiltersModal from "@/components/orders/OrderFiltersModal";
@@ -26,17 +27,7 @@ import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { getCouriers } from "@/services/courierService";
-import {
-  generateOrderWaybill,
-  reportCourierIssue,
-  reportFraudOrder,
-} from "@/services/operationService";
-import {
-  getOrders,
-  removeOrder,
-  updateOrder,
-  updateOrderStatus,
-} from "@/services/orderService";
+import { getOrders, removeOrder, updateOrderStatus } from "@/services/orderService";
 
 export default function OrdersTab() {
   const { colors } = useAppTheme();
@@ -59,9 +50,10 @@ export default function OrdersTab() {
     courierId: "",
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [isScanOpen, setIsScanOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isManualWaybillOpen, setIsManualWaybillOpen] = useState(false);
+  const [isLookingUpWaybill, setIsLookingUpWaybill] = useState(false);
 
-  const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [actionSheetOrder, setActionSheetOrder] = useState(null);
 
@@ -105,13 +97,6 @@ export default function OrdersTab() {
     loadOrders();
   }
 
-  function replaceOrder(updatedOrder) {
-    setOrders((current) =>
-      current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
-    );
-    return updatedOrder;
-  }
-
   const stats = useMemo(
     () =>
       ORDER_STAT_DEFINITIONS.map((definition) => ({
@@ -128,35 +113,6 @@ export default function OrdersTab() {
     if (statusFilter === "all") return orders;
     return orders.filter((order) => order.status === statusFilter);
   }, [orders, statusFilter]);
-
-  // --- Row-level handlers passed down into the expanded details panel ---
-
-  async function handleStatusChange(orderId, status) {
-    replaceOrder(await updateOrderStatus(business.id, orderId, status));
-  }
-
-  async function handleGenerateWaybill(orderId) {
-    return replaceOrder(await generateOrderWaybill(business.id, orderId));
-  }
-
-  async function handleWaybillSave(orderId, waybillNumber) {
-    return replaceOrder(await updateOrder(business.id, orderId, { waybillNumber }));
-  }
-
-  async function handleFraudReport(orderId, note) {
-    await reportFraudOrder(business.id, orderId, "fake-details", note);
-    setOrders((current) =>
-      current.map((order) =>
-        order.id === orderId
-          ? { ...order, fraudReport: { status: "active", reason: "fake-details" } }
-          : order,
-      ),
-    );
-  }
-
-  async function handleCourierIssue(orderId, note) {
-    await reportCourierIssue(business.id, orderId, "branch-problem", note);
-  }
 
   // --- Selection and bulk actions ---
 
@@ -284,37 +240,40 @@ export default function OrdersTab() {
     );
   }
 
-  const detailHandlers = {
-    onStatusChange: handleStatusChange,
-    onGenerateWaybill: handleGenerateWaybill,
-    onWaybillSave: handleWaybillSave,
-    onFraudReport: handleFraudReport,
-    onCourierIssue: handleCourierIssue,
-  };
+  // Look a scanned/typed waybill up and jump straight to that order.
+  async function openOrderByWaybill(waybillNumber) {
+    const trimmedWaybill = waybillNumber.trim();
+    if (!trimmedWaybill) return;
+
+    setIsLookingUpWaybill(true);
+
+    try {
+      const matches = await getOrders(business.id, { search: trimmedWaybill });
+      const exactMatch =
+        matches.find(
+          (order) =>
+            order.waybillNumber?.toUpperCase() === trimmedWaybill.toUpperCase(),
+        ) ?? matches[0];
+
+      if (!exactMatch) {
+        Alert.alert(
+          "No order found",
+          `Nothing matched the waybill "${trimmedWaybill}".`,
+        );
+        return;
+      }
+
+      router.push(`/order/${exactMatch.id}`);
+    } catch (error) {
+      Alert.alert("Lookup failed", error.message ?? "Please try again.");
+    } finally {
+      setIsLookingUpWaybill(false);
+    }
+  }
 
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Orders" />
-
-      <View style={styles.statsWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statsRow}
-        >
-          {stats.map((stat) => (
-            <StatCard2
-              key={stat.key}
-              label={stat.label}
-              value={stat.count}
-              icon={stat.icon}
-              tone={stat.tone}
-              isActive={statusFilter === stat.key}
-              onPress={() => setStatusFilter(stat.key)}
-            />
-          ))}
-        </ScrollView>
-      </View>
 
       <View style={styles.toolbar}>
         <View style={styles.searchBox}>
@@ -343,10 +302,33 @@ export default function OrdersTab() {
         </TouchableOpacity>
       </View>
 
+
+
+      <View style={styles.statsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsRow}
+        >
+          {stats.map((stat) => (
+            <StatCard2
+              key={stat.key}
+              label={stat.label}
+              value={stat.count}
+              icon={stat.icon}
+              tone={stat.tone}
+              isActive={statusFilter === stat.key}
+              onPress={() => setStatusFilter(stat.key)}
+            />
+          ))}
+        </ScrollView>
+      </View>
+
+
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => setIsScanOpen(true)}
+          onPress={() => setIsScannerOpen(true)}
         >
           <ScanLine size={15} color={colors.text} />
           <Text style={styles.actionButtonText}>Scan waybill</Text>
@@ -406,16 +388,10 @@ export default function OrdersTab() {
           renderItem={({ item }) => (
             <OrderRow
               order={item}
-              isExpanded={expandedOrderId === item.id}
               isSelected={selectedOrderIds.includes(item.id)}
-              onToggleExpanded={() =>
-                setExpandedOrderId((current) =>
-                  current === item.id ? null : item.id,
-                )
-              }
+              onPress={() => router.push(`/order/${item.id}`)}
               onToggleSelected={() => toggleSelectedOrder(item.id)}
               onOpenActions={() => setActionSheetOrder(item)}
-              detailHandlers={detailHandlers}
             />
           )}
         />
@@ -440,20 +416,42 @@ export default function OrdersTab() {
         onRemove={() => handleRemoveOrder(actionSheetOrder)}
       />
 
-      <PromptModal
-        visible={isScanOpen}
-        title="Scan waybill"
-        description="Enter or paste a waybill number to find its order."
-        defaultValue=""
-        placeholder="Waybill number"
-        confirmLabel="Search"
-        onCancel={() => setIsScanOpen(false)}
-        onConfirm={(value) => {
-          setIsScanOpen(false);
-          setSearchText(value.trim());
-          setStatusFilter("all");
+      <BarcodeScannerModal
+        visible={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanned={(scannedValue) => {
+          setIsScannerOpen(false);
+
+          // A null value means the seller chose to type the number instead.
+          if (scannedValue === null) {
+            setIsManualWaybillOpen(true);
+            return;
+          }
+
+          openOrderByWaybill(scannedValue);
         }}
       />
+
+      <PromptModal
+        visible={isManualWaybillOpen}
+        title="Enter waybill number"
+        description="Type or paste a waybill number to open its order."
+        defaultValue=""
+        placeholder="Waybill number"
+        confirmLabel="Find order"
+        onCancel={() => setIsManualWaybillOpen(false)}
+        onConfirm={(value) => {
+          setIsManualWaybillOpen(false);
+          openOrderByWaybill(value);
+        }}
+      />
+
+      {isLookingUpWaybill && (
+        <View style={styles.lookupOverlay}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={styles.lookupText}>Finding order…</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -473,6 +471,7 @@ function createStyles(colors) {
       alignItems: "center",
     },
     toolbar: {
+      marginTop: 8,
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 16,
@@ -569,6 +568,18 @@ function createStyles(colors) {
       fontSize: 12,
       textAlign: "center",
       paddingVertical: 14,
+    },
+    lookupOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.45)",
+      gap: 12,
+    },
+    lookupText: {
+      color: "#ffffff",
+      fontSize: 14,
+      fontWeight: "600",
     },
   });
 }

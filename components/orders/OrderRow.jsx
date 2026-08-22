@@ -1,27 +1,18 @@
 import { Image } from "expo-image";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  MoreVertical,
-  Package,
-} from "lucide-react-native";
+import { Check, MoreVertical, Package } from "lucide-react-native";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { useAppTheme } from "../../context/ThemeContext";
 import StatusPill from "./StatusPill";
-import OrderDetailsPanel from "./OrderDetailsPanel";
 
 const MAX_THUMBNAILS = 3;
 
 export default function OrderRow({
   order,
-  isExpanded,
   isSelected,
-  onToggleExpanded,
+  onPress,
   onToggleSelected,
   onOpenActions,
-  detailHandlers,
 }) {
   const { colors } = useAppTheme();
   const hasWarning = Boolean(order.fraudWarning);
@@ -41,30 +32,24 @@ export default function OrderRow({
           {isSelected ? <Check size={13} color="#ffffff" /> : null}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.headMain}
-          onPress={onToggleExpanded}
-          activeOpacity={0.7}
-        >
-          <View style={styles.headText}>
-            <View style={styles.titleRow}>
-              <Text style={styles.orderNumber} numberOfLines={1}>
-                #{order.orderNumber}
-              </Text>
-              <StatusPill status={order.status} />
-            </View>
-
-            <Text style={styles.customerName} numberOfLines={1}>
-              {order.customerName}
-              {order.phoneNumber ? ` · ${order.phoneNumber}` : ""}
+        <TouchableOpacity style={styles.headMain} onPress={onPress} activeOpacity={0.7}>
+          <View style={styles.titleRow}>
+            <Text style={styles.orderNumber} numberOfLines={1}>
+              #{order.orderNumber}
             </Text>
+            <StatusPill status={order.status} />
           </View>
 
-          {isExpanded ? (
-            <ChevronDown size={18} color={colors.muted} />
-          ) : (
-            <ChevronRight size={18} color={colors.muted} />
-          )}
+          <Text style={styles.waybill} numberOfLines={1}>
+            {order.waybillNumber
+              ? `Waybill: ${order.waybillNumber}`
+              : "Waybill: not assigned"}
+          </Text>
+
+          <Text style={styles.customerName} numberOfLines={1}>
+            {order.customerName}
+            {order.phoneNumber ? ` · ${order.phoneNumber}` : ""}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.moreButton} onPress={onOpenActions} hitSlop={8}>
@@ -76,11 +61,7 @@ export default function OrderRow({
         <Text style={styles.warningText}>⚠ Matches the shared fraud registry</Text>
       )}
 
-      <TouchableOpacity
-        style={styles.bodyRow}
-        onPress={onToggleExpanded}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity style={styles.bodyRow} onPress={onPress} activeOpacity={0.7}>
         <View style={styles.thumbnails}>
           {thumbnails.map((item, index) =>
             item.imageUrl ? (
@@ -116,8 +97,6 @@ export default function OrderRow({
           </Text>
         </View>
       </TouchableOpacity>
-
-      {isExpanded && <OrderDetailsPanel order={order} {...detailHandlers} />}
     </View>
   );
 }
@@ -154,12 +133,6 @@ function createStyles(colors, isSelected, hasWarning) {
     },
     headMain: {
       flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    headText: {
-      flex: 1,
       gap: 3,
     },
     titleRow: {
@@ -173,6 +146,11 @@ function createStyles(colors, isSelected, hasWarning) {
       fontWeight: "700",
       fontSize: 14,
       flexShrink: 1,
+    },
+    waybill: {
+      color: colors.subtle,
+      fontSize: 11,
+      fontWeight: "600",
     },
     customerName: {
       color: colors.muted,
