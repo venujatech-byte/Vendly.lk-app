@@ -14,6 +14,8 @@ export const lightColors = {
   dangerBackground: "#feecec",
   dangerBorder: "#ef4444",
   success: "#0f766e",
+  navGradient: ["#002d52", "#063b6a", "#00315c"],
+  navActiveGradient: ["#0879dd", "#075da9"],
 };
 
 export const darkColors = {
@@ -32,4 +34,6 @@ export const darkColors = {
   dangerBackground: "#2a1414",
   dangerBorder: "#7f1d1d",
   success: "#2dd4bf",
+  navGradient: ["#052d50", "#073d6d", "#031e37"],
+  navActiveGradient: ["#075fae", "#064b89"],
 };

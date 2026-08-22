@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { Bell, Moon, Settings, Sun } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
@@ -141,10 +142,17 @@ export default function ScreenHeader({ title }) {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.avatar} onPress={openAvatarMenu}>
-          <Text style={styles.avatarText}>
-            {businessInitials(sellerProfile?.businessName)}
-          </Text>
+        <TouchableOpacity onPress={openAvatarMenu}>
+          <LinearGradient
+            colors={["#0d5fa9", "#073665"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatar}
+          >
+            <Text style={styles.avatarText}>
+              {businessInitials(sellerProfile?.businessName)}
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -199,28 +207,27 @@ function createStyles(colors) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingTop: 14,
-      paddingBottom: 14,
+      paddingHorizontal: 12,
+      minHeight: 56,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     title: {
       color: colors.textStrong,
-      fontSize: 22,
+      fontSize: 20,
       fontWeight: "700",
       flexShrink: 1,
     },
     actions: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: 2,
     },
     iconButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -242,10 +249,9 @@ function createStyles(colors) {
       fontWeight: "700",
     },
     avatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.accent,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       alignItems: "center",
       justifyContent: "center",
       marginLeft: 4,

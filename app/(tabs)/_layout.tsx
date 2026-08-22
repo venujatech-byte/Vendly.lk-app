@@ -9,22 +9,13 @@ import {
 } from 'lucide-react-native';
 import React from 'react';
 
-import { useAppTheme } from '@/context/ThemeContext';
+import BottomTabBar from '@/components/BottomTabBar';
 
 export default function TabLayout() {
-  const { colors } = useAppTheme();
-
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-        },
-      }}>
+      tabBar={(props) => <BottomTabBar {...props} />}
+      screenOptions={{ headerShown: false }}>
       <Tabs.Screen
         name="index"
         options={{
