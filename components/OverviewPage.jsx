@@ -16,7 +16,11 @@ import {
   View,
 } from "react-native";
 
+import { LogOut } from "lucide-react-native";
+import { TouchableOpacity } from "react-native";
+
 import { useAuth } from "../context/authContextValue";
+import { logoutUser } from "../services/authService";
 import { getAnalyticsOverview } from "../services/analyticsService";
 
 const TONES = {
@@ -117,9 +121,18 @@ function OverviewPage() {
       style={styles.screen}
       contentContainerStyle={styles.screenContent}
     >
-      <View style={styles.intro}>
-        <Text style={styles.introTitle}>Hi! {businessName}</Text>
-        <Text style={styles.introSubtitle}>Here is your business summary.</Text>
+      <View style={styles.introRow}>
+        <View style={styles.intro}>
+          <Text style={styles.introTitle}>Hi! {businessName}</Text>
+          <Text style={styles.introSubtitle}>Here is your business summary.</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => logoutUser()}
+        >
+          <LogOut size={20} color="#526b87" />
+        </TouchableOpacity>
       </View>
 
       {analyticsError && (
@@ -181,8 +194,24 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 32,
   },
-  intro: {
+  introRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     marginBottom: 10,
+  },
+  intro: {
+    flexShrink: 1,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#dbe4ee",
   },
   introTitle: {
     color: "#08213f",
