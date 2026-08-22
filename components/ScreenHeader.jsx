@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Bell, Moon, Settings, Sun } from "lucide-react-native";
+import { Bell, Moon, Search, Settings, Sun } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,9 +19,15 @@ import { useAuth } from "../context/authContextValue";
 import { useAppTheme } from "../context/ThemeContext";
 import { logoutUser } from "../services/authService";
 import {
+  configureDeviceNotifications,
+  markNotificationsAsSeen,
+  notifyNewNotifications,
+} from "../services/deviceNotificationService";
+import {
   getNotifications,
   markNotificationRead,
 } from "../services/notificationService";
+import GlobalSearchModal from "./GlobalSearchModal";
 
 function businessInitials(name = "") {
   const words = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -35,6 +41,7 @@ export default function ScreenHeader({ title }) {
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
 
@@ -42,11 +49,27 @@ export default function ScreenHeader({ title }) {
     if (!business?.id) return undefined;
 
     let isCurrent = true;
+    let isFirstLoad = true;
+
+    configureDeviceNotifications();
 
     async function loadUnread() {
       try {
-        const items = await getNotifications(business.id, true);
-        if (isCurrent) setNotifications(items ?? []);
+        const items = (await getNotifications(business.id, true)) ?? [];
+
+        if (!isCurrent) return;
+
+        setNotifications(items);
+
+        if (isFirstLoad) {
+          // Don't fire a burst of alerts for a backlog the seller may have
+          // already seen on the web dashboard.
+          markNotificationsAsSeen(items);
+          isFirstLoad = false;
+          return;
+        }
+
+        notifyNewNotifications(items);
       } catch {
         // Silently ignore — the badge just stays at its last known count.
       }
@@ -116,6 +139,13 @@ export default function ScreenHeader({ title }) {
       </Text>
 
       <View style={styles.actions}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setIsSearchOpen(true)}
+        >
+          <Search size={20} color={colors.text} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.iconButton} onPress={toggleTheme}>
           {theme === "dark" ? (
             <Sun size={20} color={colors.text} />
@@ -199,6 +229,11 @@ export default function ScreenHeader({ title }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <GlobalSearchModal
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+      />
     </View>
   );
 }
