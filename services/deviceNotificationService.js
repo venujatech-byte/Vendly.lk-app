@@ -61,9 +61,14 @@ export async function notifyNewNotifications(notifications = []) {
 
     await Notifications.scheduleNotificationAsync({
       content: {
+        // The backend writes the detail under `message`, not `body`.
         title: notification.title ?? "Vendly",
-        body: notification.body ?? "",
-        data: { notificationId: notification.id, type: notification.type },
+        body: notification.message ?? "",
+        data: {
+          notificationId: notification.id,
+          type: notification.type,
+          orderId: notification.orderId ?? null,
+        },
       },
       trigger: null,
     });

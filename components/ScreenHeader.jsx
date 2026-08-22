@@ -1,13 +1,8 @@
-import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Bell, Moon, Search, Settings, Sun } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -23,11 +18,9 @@ import {
   markNotificationsAsSeen,
   notifyNewNotifications,
 } from "../services/deviceNotificationService";
-import {
-  getNotifications,
-  markNotificationRead,
-} from "../services/notificationService";
+import { getNotifications } from "../services/notificationService";
 import GlobalSearchModal from "./GlobalSearchModal";
+import NotificationsPanel from "./NotificationsPanel";
 
 function businessInitials(name = "") {
   const words = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -38,12 +31,9 @@ export default function ScreenHeader({ title }) {
   const { colors, theme, toggleTheme } = useAppTheme();
   const { sellerProfile, business } = useAuth();
   const insets = useSafeAreaInsets();
-  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-
-  const unreadCount = notifications.filter((item) => !item.readAt).length;
 
   useEffect(() => {
     if (!business?.id) return undefined;
@@ -59,7 +49,7 @@ export default function ScreenHeader({ title }) {
 
         if (!isCurrent) return;
 
-        setNotifications(items);
+        setUnreadCount(items.length);
 
         if (isFirstLoad) {
           // Don't fire a burst of alerts for a backlog the seller may have
@@ -83,41 +73,6 @@ export default function ScreenHeader({ title }) {
       clearInterval(interval);
     };
   }, [business?.id]);
-
-  async function openNotifications() {
-    setIsNotificationsOpen(true);
-
-    if (!business?.id) return;
-
-    setIsLoadingNotifications(true);
-    try {
-      const items = await getNotifications(business.id, true);
-      setNotifications(items ?? []);
-    } catch {
-      // Keep whatever notifications were already loaded.
-    } finally {
-      setIsLoadingNotifications(false);
-    }
-  }
-
-  async function handleNotificationPress(notification) {
-    if (!business?.id) return;
-
-    try {
-      await markNotificationRead(business.id, notification.id);
-      setNotifications((current) =>
-        current.filter((item) => item.id !== notification.id),
-      );
-    } catch {
-      // Ignore — worst case the notification stays unread.
-    }
-
-    setIsNotificationsOpen(false);
-
-    if (notification.type === "order" || notification.type === "fraud") {
-      router.push("/(tabs)/orders");
-    }
-  }
 
   function openAvatarMenu() {
     Alert.alert(
@@ -163,7 +118,10 @@ export default function ScreenHeader({ title }) {
           <Settings size={20} color={colors.text} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.iconButton} onPress={openNotifications}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setIsNotificationsOpen(true)}
+        >
           <Bell size={20} color={colors.text} />
           {unreadCount > 0 && (
             <View style={styles.badge}>
@@ -188,47 +146,11 @@ export default function ScreenHeader({ title }) {
         </TouchableOpacity>
       </View>
 
-      <Modal
+      <NotificationsPanel
         visible={isNotificationsOpen}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setIsNotificationsOpen(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setIsNotificationsOpen(false)}
-        >
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Notifications</Text>
-
-            {isLoadingNotifications ? (
-              <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} />
-            ) : (
-              <FlatList
-                data={notifications}
-                keyExtractor={(item) => item.id}
-                style={{ maxHeight: 360 }}
-                ListEmptyComponent={
-                  <Text style={styles.emptyText}>No unread notifications.</Text>
-                }
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.notificationRow}
-                    onPress={() => handleNotificationPress(item)}
-                  >
-                    <Text style={styles.notificationTitle}>{item.title}</Text>
-                    {item.body ? (
-                      <Text style={styles.notificationBody} numberOfLines={2}>
-                        {item.body}
-                      </Text>
-                    ) : null}
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setIsNotificationsOpen(false)}
+        onUnreadChange={setUnreadCount}
+      />
 
       <GlobalSearchModal
         visible={isSearchOpen}
@@ -298,48 +220,6 @@ function createStyles(colors, topInset) {
       color: "#ffffff",
       fontWeight: "700",
       fontSize: 13,
-    },
-    modalBackdrop: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.4)",
-      justifyContent: "flex-start",
-      alignItems: "flex-end",
-      paddingTop: 60,
-      paddingRight: 16,
-    },
-    modalCard: {
-      width: 280,
-      backgroundColor: colors.surface,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 14,
-    },
-    modalTitle: {
-      color: colors.textStrong,
-      fontWeight: "700",
-      fontSize: 15,
-      marginBottom: 8,
-    },
-    emptyText: {
-      color: colors.muted,
-      fontSize: 13,
-      paddingVertical: 12,
-    },
-    notificationRow: {
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    notificationTitle: {
-      color: colors.text,
-      fontWeight: "600",
-      fontSize: 13,
-    },
-    notificationBody: {
-      color: colors.muted,
-      fontSize: 12,
-      marginTop: 2,
     },
   });
 }
