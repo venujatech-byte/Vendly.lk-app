@@ -24,21 +24,3 @@ export async function reportCourierIssue(businessId, orderId, type, note) {
   );
   return response.courierIssue;
 }
-
-// The web app builds a printable HTML window. On mobile there is no print
-// window, so callers share a plain-text waybill summary instead.
-export function buildWaybillText(order) {
-  return [
-    `Waybill: ${order.waybillNumber ?? "Not generated"}`,
-    `Order: ${order.orderNumber}`,
-    `Customer: ${order.customerName}`,
-    `Phone: ${order.phoneNumber}`,
-    order.secondaryPhoneNumber ? `Alt phone: ${order.secondaryPhoneNumber}` : "",
-    `Address: ${order.deliveryAddress}`,
-    `Courier: ${order.courier}`,
-    `Items: ${order.itemCount}`,
-    `Total: ${order.total}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}

@@ -76,6 +76,22 @@ export async function apiRequest(
   return responseData;
 }
 
+// Native file downloads stream straight to disk instead of going through a
+// blob, so they need the resolved URL and auth header rather than a fetch.
+export function resolveApiUrl(path) {
+  return `${configuredApiBaseUrl}/${path.replace(/^\//, "")}`;
+}
+
+export async function getAuthorizationHeader() {
+  const idToken = await authTokenProvider();
+
+  if (!idToken) {
+    throw new Error("You must be logged in to complete this request.");
+  }
+
+  return { Authorization: `Bearer ${idToken}` };
+}
+
 export async function apiFileRequest(path) {
   const idToken = await authTokenProvider();
 
