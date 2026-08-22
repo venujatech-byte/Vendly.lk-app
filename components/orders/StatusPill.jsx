@@ -1,10 +1,13 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { STATUS_LABELS, STATUS_TONES, TONE_COLORS } from "../../constants/orderStatus";
+import { STATUS_LABELS, STATUS_TONES } from "../../constants/orderStatus";
+import { getToneColors } from "../../constants/tones";
+import { useAppTheme } from "../../context/ThemeContext";
 
 export default function StatusPill({ status }) {
+  const { theme } = useAppTheme();
   const tone = STATUS_TONES[status] ?? "blue";
-  const colors = TONE_COLORS[tone];
+  const colors = getToneColors(tone, theme);
   const label = STATUS_LABELS[status] ?? status;
 
   return (

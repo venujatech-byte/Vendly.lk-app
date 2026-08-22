@@ -14,7 +14,7 @@ import {
 
 import OrderCard from "@/components/orders/OrderCard";
 import OrderFiltersModal from "@/components/orders/OrderFiltersModal";
-import StatChip from "@/components/orders/StatChip";
+import StatCard2 from "@/components/orders/StatCard2";
 import ScreenHeader from "@/components/ScreenHeader";
 import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
@@ -130,9 +130,10 @@ export default function OrdersTab() {
         keyExtractor={(item) => item.key}
         contentContainerStyle={styles.statsRow}
         renderItem={({ item }) => (
-          <StatChip
+          <StatCard2
             label={item.label}
             value={item.count}
+            icon={item.icon}
             tone={item.tone}
             isActive={statusFilter === item.key}
             onPress={() => setStatusFilter(item.key)}

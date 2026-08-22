@@ -14,31 +14,7 @@ import { useAuth } from "../context/authContextValue";
 import { useAppTheme } from "../context/ThemeContext";
 import { getAnalyticsOverview } from "../services/analyticsService";
 import ScreenHeader from "./ScreenHeader";
-
-const TONES = {
-  blue: { icon: "#1d75e8e0", background: "#e8f1ff" },
-  orange: { icon: "#f59e0b", background: "#fff4df" },
-  green: { icon: "#22a474", background: "#e6f8f1" },
-  purple: { icon: "#8247e5", background: "#f0eaff" },
-  red: { icon: "#ef4444", background: "#feecec" },
-};
-
-function StatCard({ label, value, icon: Icon, tone = "blue", styles }) {
-  const colors = TONES[tone] ?? TONES.blue;
-
-  return (
-    <View style={styles.statCard}>
-      <View style={[styles.statCardIcon, { backgroundColor: colors.background }]}>
-        <Icon size={26} color={colors.icon} />
-      </View>
-
-      <View style={styles.statCardContent}>
-        <Text style={styles.statCardLabel}>{label}</Text>
-        <Text style={styles.statCardValue}>{value}</Text>
-      </View>
-    </View>
-  );
-}
+import StatCard from "./StatCard";
 
 function OverviewPage() {
   const { colors } = useAppTheme();
@@ -143,7 +119,6 @@ function OverviewPage() {
                 value={stat.value}
                 icon={stat.icon}
                 tone={stat.tone}
-                styles={styles}
               />
             ))}
           </View>
@@ -174,16 +149,16 @@ function createStyles(colors) {
       backgroundColor: colors.background,
     },
     screenContent: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 32,
+      paddingHorizontal: 12,
+      paddingTop: 14,
+      paddingBottom: 24,
     },
     intro: {
-      marginBottom: 10,
+      marginBottom: 12,
     },
     introTitle: {
       color: colors.textStrong,
-      fontSize: 24,
+      fontSize: 21,
       fontWeight: "700",
       marginBottom: 6,
     },
@@ -212,48 +187,14 @@ function createStyles(colors) {
     },
     sectionTitle: {
       color: colors.text,
-      fontSize: 20,
+      fontSize: 21,
       fontWeight: "700",
       marginBottom: 14,
     },
     statsGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 12,
-    },
-    statCard: {
-      flexGrow: 1,
-      width: "47%",
-      minHeight: 82,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      padding: 14,
-      borderRadius: 8,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    statCardIcon: {
-      width: 50,
-      height: 50,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    statCardContent: {
-      flexShrink: 1,
-      gap: 3,
-    },
-    statCardLabel: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    statCardValue: {
-      color: colors.textStrong,
-      fontSize: 22,
-      fontWeight: "700",
+      gap: 6,
     },
     workGrid: {
       flexDirection: "row",

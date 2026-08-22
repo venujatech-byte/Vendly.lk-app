@@ -29,21 +29,22 @@ export const STATUS_TONES = {
   cancelled: "red",
 };
 
-export const TONE_COLORS = {
-  blue: { icon: "#1d75e8e0", background: "#e8f1ff" },
-  orange: { icon: "#f59e0b", background: "#fff4df" },
-  green: { icon: "#22a474", background: "#e6f8f1" },
-  purple: { icon: "#8247e5", background: "#f0eaff" },
-  red: { icon: "#ef4444", background: "#feecec" },
-  teal: { icon: "#0f766e", background: "#e2f6f2" },
-};
+import {
+  CircleCheck,
+  Clock3,
+  Package,
+  Package2,
+  SquareCheckBig,
+  Truck,
+  Undo2,
+} from "lucide-react-native";
 
 export const ORDER_STAT_DEFINITIONS = [
-  { key: "all", label: "All", tone: "blue" },
-  { key: "pending", label: "Pending", tone: "orange" },
-  { key: "confirmed", label: "Confirmed", tone: "green" },
-  { key: "packed", label: "Packed", tone: "blue" },
-  { key: "shipped", label: "Shipped", tone: "purple" },
-  { key: "delivered", label: "Delivered", tone: "teal" },
-  { key: "returned", label: "Returned", tone: "red" },
+  { key: "all", label: "All", tone: "blue", icon: Package },
+  { key: "pending", label: "Pending", tone: "orange", icon: Clock3 },
+  { key: "confirmed", label: "Confirmed", tone: "green", icon: SquareCheckBig },
+  { key: "packed", label: "Packed", tone: "blue", icon: Package2 },
+  { key: "shipped", label: "Shipped", tone: "purple", icon: Truck },
+  { key: "delivered", label: "Delivered", tone: "teal", icon: CircleCheck },
+  { key: "returned", label: "Returned", tone: "red", icon: Undo2 },
 ];
