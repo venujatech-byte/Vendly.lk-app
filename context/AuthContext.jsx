@@ -1,6 +1,15 @@
+import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 
+import { auth } from "../firebase/firebaseConfig";
+import { getCurrentUserToken } from "../services/authService";
 import { setAuthTokenProvider } from "../services/apiClient";
+import { getCurrentAccount } from "../services/accountService";
+import { createBusiness } from "../services/businessService";
+import {
+  clearPendingSellerProfile,
+  getSellerProfile,
+} from "../services/sellerService";
 import { AuthContext } from "./authContextValue";
 
 function AuthProvider({ children }) {
@@ -10,22 +19,98 @@ function AuthProvider({ children }) {
   const [accountError, setAccountError] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  useEffect(() => {
-    setAuthTokenProvider(async () => null);
+  async function loadAccount(currentUser) {
+    let legacyProfile = await getSellerProfile(currentUser);
 
-    setIsAuthLoading(false);
+    try {
+      let currentAccount = await getCurrentAccount();
+
+      if (
+        !legacyProfile &&
+        currentAccount.profile?.businessName &&
+        !currentAccount.business
+      ) {
+        legacyProfile = {
+          ownerName: currentAccount.profile.ownerName,
+          businessName: currentAccount.profile.businessName,
+        };
+      }
+
+      if (!currentAccount.business && legacyProfile) {
+        await createBusiness({
+          ownerName:
+            legacyProfile.ownerName ??
+            currentUser.displayName ??
+            "Business owner",
+          businessName: legacyProfile.businessName,
+        });
+
+        currentAccount = await getCurrentAccount();
+      }
+
+      setAccount(currentAccount);
+      setAccountError(null);
+
+      if (currentAccount.business) {
+        await clearPendingSellerProfile(currentUser);
+        setSellerProfile({
+          ...legacyProfile,
+          ownerName:
+            currentAccount.profile?.displayName ??
+            legacyProfile?.ownerName ??
+            currentUser.displayName ??
+            "",
+          businessName: currentAccount.business.name,
+        });
+        return;
+      }
+    } catch (error) {
+      console.error("Vendly account could not be loaded:", error);
+      setAccount(null);
+      setAccountError(error);
+    }
+
+    setSellerProfile(legacyProfile);
+  }
+
+  useEffect(() => {
+    setAuthTokenProvider(() => getCurrentUserToken());
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setIsAuthLoading(true);
+      setUser(currentUser);
+
+      try {
+        if (currentUser) {
+          await loadAccount(currentUser);
+        } else {
+          setSellerProfile(null);
+          setAccount(null);
+          setAccountError(null);
+        }
+      } catch (error) {
+        console.error("Seller profile could not be loaded:", error);
+        setSellerProfile(null);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   async function refreshSellerProfile() {
-    if (!user) {
+    if (!auth.currentUser) {
       setSellerProfile(null);
       setAccount(null);
+      return;
     }
+
+    await loadAccount(auth.currentUser);
   }
 
   const authValue = {
     user,
-    setUser,
     sellerProfile,
     account,
     business: account?.business ?? null,
