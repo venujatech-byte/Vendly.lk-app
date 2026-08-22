@@ -1,10 +1,9 @@
 import { router } from "expo-router";
-import { Minus, Plus, Search, X } from "lucide-react-native";
+import { ArrowLeft, Minus, Plus, Search, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,21 +27,36 @@ const PAYMENT_METHODS = [
 ];
 
 function formatLkr(amount) {
-  return `LKR ${amount.toLocaleString("en-LK", { maximumFractionDigits: 2 })}`;
+  return `LKR ${Number(amount ?? 0).toLocaleString("en-LK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function toAmount(value) {
+  const parsed = Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 export default function AddOrderScreen() {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => createStyles(colors, insets.top), [colors, insets.top]);
+  const styles = useMemo(
+    () => createStyles(colors, insets.top, insets.bottom),
+    [colors, insets.top, insets.bottom],
+  );
   const { business } = useAuth();
+
+  // "cart" collects who and what; "summary" reviews money and confirms.
+  const [step, setStep] = useState("cart");
 
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
-  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [secondaryPhoneNumber, setSecondaryPhoneNumber] = useState("");
 
   const [addressLine1, setAddressLine1] = useState("");
   const [addressCity, setAddressCity] = useState("");
@@ -56,6 +70,7 @@ export default function AddOrderScreen() {
   const [courierId, setCourierId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [discountAmount, setDiscountAmount] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -104,14 +119,29 @@ export default function AddOrderScreen() {
       .slice(0, 20);
   }, [allProducts, productSearch]);
 
-  const subtotal = useMemo(
-    () =>
-      selectedItems.reduce(
-        (sum, item) => sum + item.sellingPrice * item.quantity,
-        0,
-      ),
-    [selectedItems],
-  );
+  const selectedCourier = couriers.find((courier) => courier.id === courierId);
+
+  // The backend recalculates all of this on submit; this mirrors its maths so
+  // the seller sees the same numbers before committing.
+  const totals = useMemo(() => {
+    const subtotal = selectedItems.reduce(
+      (sum, item) => sum + item.sellingPrice * item.quantity,
+      0,
+    );
+    const discount = Math.min(toAmount(discountAmount), subtotal);
+    const deliveryFee = selectedCourier
+      ? (selectedCourier.firstKgPriceMinor ?? 0) / 100
+      : 0;
+    const total = Math.max(0, subtotal - discount + deliveryFee);
+    const deposit =
+      paymentMethod === "deposit"
+        ? Math.min(toAmount(depositAmount), total)
+        : paymentMethod === "paid"
+          ? total
+          : 0;
+
+    return { subtotal, discount, deliveryFee, total, deposit, balance: total - deposit };
+  }, [selectedItems, discountAmount, selectedCourier, paymentMethod, depositAmount]);
 
   function addItem(variant) {
     setSelectedItems((current) => {
@@ -143,6 +173,9 @@ export default function AddOrderScreen() {
     setSelectedCustomer(customer);
     setCustomerResults([]);
     setCustomerSearch(customer.name);
+    setPhoneNumber(customer.normalizedPhone ?? "");
+    setSecondaryPhoneNumber(customer.normalizedSecondaryPhone ?? "");
+
     if (customer.defaultAddress) {
       setAddressLine1(customer.defaultAddress.line1 ?? "");
       setAddressCity(customer.defaultAddress.city ?? "");
@@ -150,15 +183,14 @@ export default function AddOrderScreen() {
     }
   }
 
-  async function handleSubmit() {
-    if (!business?.id) return;
-
+  // Validate everything the cart step owns before showing the summary.
+  function handleCheckout() {
     if (!selectedCustomer && !isCreatingNewCustomer) {
       Alert.alert("Pick a customer", "Search for an existing customer or add a new one.");
       return;
     }
 
-    if (isCreatingNewCustomer && (!newCustomerName.trim() || !newCustomerPhone.trim())) {
+    if (isCreatingNewCustomer && (!newCustomerName.trim() || !phoneNumber.trim())) {
       Alert.alert("Missing details", "Enter the new customer's name and phone number.");
       return;
     }
@@ -170,6 +202,20 @@ export default function AddOrderScreen() {
 
     if (selectedItems.length === 0) {
       Alert.alert("No items", "Add at least one item to the order.");
+      return;
+    }
+
+    setStep("summary");
+  }
+
+  async function handleCreateOrder() {
+    if (!business?.id) return;
+
+    if (paymentMethod === "deposit" && totals.deposit <= 0) {
+      Alert.alert(
+        "Enter the deposit",
+        "Add how much the customer has already paid, or change the payment method.",
+      );
       return;
     }
 
@@ -187,7 +233,8 @@ export default function AddOrderScreen() {
       if (isCreatingNewCustomer) {
         const customer = await createCustomer(business.id, {
           name: newCustomerName.trim(),
-          phoneNumber: newCustomerPhone.trim(),
+          phoneNumber: phoneNumber.trim(),
+          secondaryPhoneNumber: secondaryPhoneNumber.trim() || undefined,
           address: deliveryAddress,
         });
         customerId = customer.id;
@@ -202,7 +249,9 @@ export default function AddOrderScreen() {
         courierId: courierId || undefined,
         deliveryAddress,
         paymentMethod,
-        discountAmount: discountAmount ? Number(discountAmount) : undefined,
+        secondaryPhoneNumber: secondaryPhoneNumber.trim() || undefined,
+        discountAmount: totals.discount || undefined,
+        depositAmount: paymentMethod === "deposit" ? totals.deposit : undefined,
       });
 
       router.replace(`/order/${order.id}`);
@@ -213,16 +262,9 @@ export default function AddOrderScreen() {
     }
   }
 
-  return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>New order</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
-          <X size={20} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
+  function renderCartStep() {
+    return (
+      <>
         <Text style={styles.sectionTitle}>Customer</Text>
 
         {!isCreatingNewCustomer ? (
@@ -284,23 +326,37 @@ export default function AddOrderScreen() {
               placeholder="Customer name"
               placeholderTextColor={colors.subtle}
             />
-            <TextInput
-              style={styles.input}
-              value={newCustomerPhone}
-              onChangeText={setNewCustomerPhone}
-              placeholder="Phone number (07XXXXXXXX)"
-              placeholderTextColor={colors.subtle}
-              keyboardType="phone-pad"
-            />
 
             <TouchableOpacity
               style={styles.linkButton}
               onPress={() => setIsCreatingNewCustomer(false)}
             >
-              <Text style={styles.linkButtonText}>Search an existing customer instead</Text>
+              <Text style={styles.linkButtonText}>
+                Search an existing customer instead
+              </Text>
             </TouchableOpacity>
           </>
         )}
+
+        <Text style={styles.sectionTitle}>Phone numbers</Text>
+        <View style={styles.phoneRow}>
+          <TextInput
+            style={[styles.input, styles.phoneInput]}
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            placeholder="Primary phone"
+            placeholderTextColor={colors.subtle}
+            keyboardType="phone-pad"
+          />
+          <TextInput
+            style={[styles.input, styles.phoneInput]}
+            value={secondaryPhoneNumber}
+            onChangeText={setSecondaryPhoneNumber}
+            placeholder="Second phone"
+            placeholderTextColor={colors.subtle}
+            keyboardType="phone-pad"
+          />
+        </View>
 
         <Text style={styles.sectionTitle}>Delivery address</Text>
         <TextInput
@@ -389,40 +445,76 @@ export default function AddOrderScreen() {
             <View style={styles.divider} />
             <View style={styles.totalRow}>
               <Text style={styles.cardTitle}>Subtotal</Text>
-              <Text style={styles.cardTitle}>{formatLkr(subtotal)}</Text>
+              <Text style={styles.cardTitle}>{formatLkr(totals.subtotal)}</Text>
             </View>
           </View>
         )}
+      </>
+    );
+  }
+
+  function renderSummaryStep() {
+    return (
+      <>
+        <Text style={styles.sectionTitle}>Order summary</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.summaryName}>
+            {isCreatingNewCustomer ? newCustomerName : selectedCustomer?.name}
+          </Text>
+          <Text style={styles.lineMuted}>
+            {phoneNumber}
+            {secondaryPhoneNumber ? ` · ${secondaryPhoneNumber}` : ""}
+          </Text>
+          <Text style={styles.lineMuted}>
+            {[addressLine1, addressCity, addressDistrict].filter(Boolean).join(", ")}
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          {selectedItems.map((item) => (
+            <View key={item.variantId} style={styles.itemRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.line}>
+                  {item.productName} {item.size ? `· ${item.size}` : ""}
+                </Text>
+                <Text style={styles.lineMuted}>
+                  {item.quantity} × {formatLkr(item.sellingPrice)}
+                </Text>
+              </View>
+              <Text style={styles.line}>
+                {formatLkr(item.sellingPrice * item.quantity)}
+              </Text>
+            </View>
+          ))}
+        </View>
 
         <Text style={styles.sectionTitle}>Courier</Text>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={[{ id: "", name: "Not assigned" }, ...couriers]}
-          keyExtractor={(item) => item.id || "none"}
-          renderItem={({ item }) => (
+        <View style={styles.chipWrap}>
+          {[{ id: "", name: "Not assigned" }, ...couriers].map((courier) => (
             <TouchableOpacity
-              style={[styles.chip, courierId === item.id && styles.chipActive]}
-              onPress={() => setCourierId(item.id)}
+              key={courier.id || "none"}
+              style={[styles.chip, courierId === courier.id && styles.chipActive]}
+              onPress={() => setCourierId(courier.id)}
             >
               <Text
-                style={[styles.chipText, courierId === item.id && styles.chipTextActive]}
+                style={[
+                  styles.chipText,
+                  courierId === courier.id && styles.chipTextActive,
+                ]}
               >
-                {item.name}
+                {courier.name}
               </Text>
             </TouchableOpacity>
-          )}
-        />
+          ))}
+        </View>
 
         <Text style={styles.sectionTitle}>Payment method</Text>
-        <View style={styles.paymentRow}>
+        <View style={styles.chipWrap}>
           {PAYMENT_METHODS.map((method) => (
             <TouchableOpacity
               key={method.value}
-              style={[
-                styles.chip,
-                paymentMethod === method.value && styles.chipActive,
-              ]}
+              style={[styles.chip, paymentMethod === method.value && styles.chipActive]}
               onPress={() => setPaymentMethod(method.value)}
             >
               <Text
@@ -442,28 +534,127 @@ export default function AddOrderScreen() {
           style={styles.input}
           value={discountAmount}
           onChangeText={setDiscountAmount}
-          placeholder="0"
+          placeholder="0.00"
           placeholderTextColor={colors.subtle}
           keyboardType="numeric"
         />
 
+        {paymentMethod === "deposit" && (
+          <>
+            <Text style={styles.sectionTitle}>Deposit already paid (LKR)</Text>
+            <TextInput
+              style={styles.input}
+              value={depositAmount}
+              onChangeText={setDepositAmount}
+              placeholder="0.00"
+              placeholderTextColor={colors.subtle}
+              keyboardType="numeric"
+            />
+          </>
+        )}
+
+        <View style={[styles.card, styles.totalsCard]}>
+          <View style={styles.totalRow}>
+            <Text style={styles.lineMuted}>Subtotal</Text>
+            <Text style={styles.line}>{formatLkr(totals.subtotal)}</Text>
+          </View>
+
+          {totals.discount > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.lineMuted}>Discount</Text>
+              <Text style={styles.deduction}>-{formatLkr(totals.discount)}</Text>
+            </View>
+          )}
+
+          <View style={styles.totalRow}>
+            <Text style={styles.lineMuted}>Delivery fee</Text>
+            <Text style={styles.line}>{formatLkr(totals.deliveryFee)}</Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.totalRow}>
+            <Text style={styles.cardTitle}>Total</Text>
+            <Text style={styles.cardTitle}>{formatLkr(totals.total)}</Text>
+          </View>
+
+          {totals.deposit > 0 && (
+            <>
+              <View style={styles.totalRow}>
+                <Text style={styles.lineMuted}>
+                  {paymentMethod === "paid" ? "Paid" : "Deposit paid"}
+                </Text>
+                <Text style={styles.deduction}>-{formatLkr(totals.deposit)}</Text>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.totalRow}>
+                <Text style={styles.balanceLabel}>Balance to collect</Text>
+                <Text style={styles.balanceValue}>{formatLkr(totals.balance)}</Text>
+              </View>
+            </>
+          )}
+        </View>
+      </>
+    );
+  }
+
+  const isSummary = step === "summary";
+
+  return (
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        {isSummary ? (
+          <TouchableOpacity onPress={() => setStep("cart")} style={styles.headerButton}>
+            <ArrowLeft size={20} color={colors.text} />
+          </TouchableOpacity>
+        ) : null}
+
+        <Text style={styles.headerTitle}>
+          {isSummary ? "Review order" : "New order"}
+        </Text>
+
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+          <X size={20} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        {isSummary ? renderSummaryStep() : renderCartStep()}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        {isSummary && (
+          <Text style={styles.footerAmount}>
+            {totals.deposit > 0
+              ? `Collect ${formatLkr(totals.balance)}`
+              : formatLkr(totals.total)}
+          </Text>
+        )}
+
         <TouchableOpacity
           style={styles.submitButton}
-          onPress={handleSubmit}
+          onPress={isSummary ? handleCreateOrder : handleCheckout}
           disabled={isSubmitting}
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.submitButtonText}>Create order</Text>
+            <Text style={styles.submitButtonText}>
+              {isSummary ? "Create order" : "Checkout"}
+            </Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-function createStyles(colors, topInset) {
+function createStyles(colors, topInset, bottomInset) {
   return StyleSheet.create({
     screen: {
       flex: 1,
@@ -472,7 +663,7 @@ function createStyles(colors, topInset) {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: 8,
       paddingHorizontal: 16,
       paddingTop: 14 + topInset,
       paddingBottom: 14,
@@ -481,11 +672,12 @@ function createStyles(colors, topInset) {
       borderBottomColor: colors.border,
     },
     headerTitle: {
+      flex: 1,
       color: colors.textStrong,
       fontWeight: "700",
       fontSize: 18,
     },
-    closeButton: {
+    headerButton: {
       width: 32,
       height: 32,
       alignItems: "center",
@@ -493,7 +685,7 @@ function createStyles(colors, topInset) {
     },
     content: {
       padding: 16,
-      paddingBottom: 48,
+      paddingBottom: 24,
     },
     sectionTitle: {
       color: colors.textStrong,
@@ -511,6 +703,13 @@ function createStyles(colors, topInset) {
       color: colors.textStrong,
       backgroundColor: colors.surface,
       marginBottom: 8,
+    },
+    phoneRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    phoneInput: {
+      flex: 1,
     },
     searchBox: {
       flexDirection: "row",
@@ -570,6 +769,15 @@ function createStyles(colors, topInset) {
       padding: 12,
       marginTop: 10,
     },
+    totalsCard: {
+      marginTop: 18,
+    },
+    summaryName: {
+      color: colors.textStrong,
+      fontSize: 15,
+      fontWeight: "700",
+      marginBottom: 2,
+    },
     itemRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -604,6 +812,7 @@ function createStyles(colors, topInset) {
     totalRow: {
       flexDirection: "row",
       justifyContent: "space-between",
+      paddingVertical: 2,
     },
     line: {
       color: colors.text,
@@ -613,10 +822,30 @@ function createStyles(colors, topInset) {
       color: colors.muted,
       fontSize: 12,
     },
+    deduction: {
+      color: colors.success,
+      fontSize: 14,
+      fontWeight: "600",
+    },
     cardTitle: {
       color: colors.textStrong,
       fontWeight: "700",
       fontSize: 14,
+    },
+    balanceLabel: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    balanceValue: {
+      color: colors.accent,
+      fontWeight: "700",
+      fontSize: 16,
+    },
+    chipWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
     },
     chip: {
       borderWidth: 1,
@@ -624,7 +853,6 @@ function createStyles(colors, topInset) {
       borderRadius: 999,
       paddingHorizontal: 14,
       paddingVertical: 8,
-      marginRight: 8,
       backgroundColor: colors.surface,
     },
     chipActive: {
@@ -639,16 +867,28 @@ function createStyles(colors, topInset) {
     chipTextActive: {
       color: "#ffffff",
     },
-    paymentRow: {
+    footer: {
       flexDirection: "row",
-      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 12 + bottomInset,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    footerAmount: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 16,
     },
     submitButton: {
+      flex: 1,
       backgroundColor: colors.accent,
       borderRadius: 10,
       paddingVertical: 14,
       alignItems: "center",
-      marginTop: 24,
     },
     submitButtonText: {
       color: "#ffffff",
