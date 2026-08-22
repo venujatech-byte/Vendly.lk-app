@@ -46,6 +46,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "59082015-6f4d-423a-b849-a130e7b81b62"
+      }
+    },
+    "owner": "vendly.lk"
   }
 }
