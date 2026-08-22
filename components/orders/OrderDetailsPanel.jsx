@@ -225,6 +225,14 @@ export default function OrderDetailsPanel({
           <Text style={styles.summaryLabel}>Subtotal</Text>
           <Text style={styles.summaryValue}>{order.subtotal ?? order.total}</Text>
         </View>
+        {order.discountMinor > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Discount</Text>
+            <Text style={[styles.summaryValue, styles.deductionValue]}>
+              -{order.discount}
+            </Text>
+          </View>
+        )}
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Delivery fee</Text>
           <Text style={styles.summaryValue}>
@@ -235,6 +243,25 @@ export default function OrderDetailsPanel({
           <Text style={styles.summaryTotalLabel}>Total</Text>
           <Text style={styles.summaryTotalValue}>{order.total}</Text>
         </View>
+
+        {/* Anything already paid is deducted, so the courier only collects
+            the remaining balance. */}
+        {order.paidAmountMinor > 0 && (
+          <>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>
+                {order.paymentMethod === "deposit" ? "Deposit paid" : "Paid"}
+              </Text>
+              <Text style={[styles.summaryValue, styles.deductionValue]}>
+                -{order.paidAmount}
+              </Text>
+            </View>
+            <View style={[styles.summaryRow, styles.summaryTotalRow]}>
+              <Text style={styles.summaryTotalLabel}>Balance to collect</Text>
+              <Text style={styles.summaryTotalValue}>{order.balanceDue}</Text>
+            </View>
+          </>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>Waybill number</Text>
@@ -472,6 +499,9 @@ function createStyles(colors) {
       color: colors.text,
       fontSize: 13,
       fontWeight: "600",
+    },
+    deductionValue: {
+      color: colors.success,
     },
     summaryTotalRow: {
       borderTopWidth: 1,

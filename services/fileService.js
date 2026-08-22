@@ -127,7 +127,14 @@ function buildWaybillHtml(order) {
       <section><h2>Courier</h2>${escapeHtml(order.courier)}</section>
       <section><table><thead><tr><th>Item</th><th>Size</th><th>Qty</th></tr></thead>
       <tbody>${itemRows}</tbody></table></section>
-      <section class="total">Collect: ${escapeHtml(order.total)}</section>
+      <section class="total">Collect: ${escapeHtml(
+        order.paidAmountMinor > 0 ? order.balanceDue : order.total,
+      )}</section>
+      ${
+        order.paidAmountMinor > 0
+          ? `<section class="muted">Order total ${escapeHtml(order.total)} less ${escapeHtml(order.paidAmount)} already paid.</section>`
+          : ""
+      }
     </body></html>`;
 }
 

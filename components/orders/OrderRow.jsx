@@ -91,7 +91,14 @@ export default function OrderRow({
         </View>
 
         <View style={styles.bodyMeta}>
-          <Text style={styles.total}>{order.total}</Text>
+          <Text style={styles.total}>
+            {order.paidAmountMinor > 0 ? order.balanceDue : order.total}
+          </Text>
+          {order.paidAmountMinor > 0 ? (
+            <Text style={styles.paidNote} numberOfLines={1}>
+              {order.total} · {order.paidAmount} paid
+            </Text>
+          ) : null}
           <Text style={styles.metaText} numberOfLines={1}>
             {order.courier} · {order.date}
           </Text>
@@ -209,6 +216,12 @@ function createStyles(colors, isSelected, hasWarning) {
       color: colors.textStrong,
       fontWeight: "700",
       fontSize: 14,
+    },
+    paidNote: {
+      color: colors.success,
+      fontSize: 10,
+      fontWeight: "600",
+      marginTop: 1,
     },
     metaText: {
       color: colors.muted,
