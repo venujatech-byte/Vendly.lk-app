@@ -15,6 +15,7 @@ import {
 
 import {
   loginWithEmail,
+  logoutUser,
   registerWithEmail,
 } from "../services/authService";
 import { saveSellerProfile } from "../services/sellerService";
@@ -76,6 +77,9 @@ export default function LoginPage() {
         );
 
         await saveSellerProfile(registeredUser, { ownerName, businessName });
+
+        // Keep the new account signed out until the seller verifies their email.
+        await logoutUser();
 
         setSuccessMessage(
           "Verification email sent. Please check your inbox before logging in.",

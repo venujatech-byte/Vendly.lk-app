@@ -1,4 +1,4 @@
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 
 import { auth } from "../firebase/firebaseConfig";
@@ -65,6 +65,14 @@ function AuthProvider({ children }) {
         return;
       }
     } catch (error) {
+      if (error.code === "email_not_verified") {
+        // A stale, unverified session is stuck signed in on-device — clear it
+        // so Stack.Protected sends the seller back to /login instead of
+        // leaving them on a broken, business-less screen forever.
+        await signOut(auth);
+        return;
+      }
+
       console.error("Vendly account could not be loaded:", error);
       setAccount(null);
       setAccountError(error);
