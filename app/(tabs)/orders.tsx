@@ -1,5 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Download, Filter, Link2, Plus, ScanLine, Search } from "lucide-react-native";
+import {
+  ArrowUpDown,
+  Download,
+  Filter,
+  Link2,
+  Plus,
+  ScanLine,
+  Search,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,9 +28,11 @@ import BulkActionsBar from "@/components/orders/BulkActionsBar";
 import OrderActionSheet from "@/components/orders/OrderActionSheet";
 import OrderFiltersModal from "@/components/orders/OrderFiltersModal";
 import OrderRow from "@/components/orders/OrderRow";
+import OrderSortModal from "@/components/orders/OrderSortModal";
 import PromptModal from "@/components/orders/PromptModal";
 import StatCard2 from "@/components/orders/StatCard2";
 import ScreenHeader from "@/components/ScreenHeader";
+import { DEFAULT_ORDER_SORT, sortOrders } from "@/constants/orderSort";
 import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -50,6 +60,8 @@ export default function OrdersTab() {
     courierId: "",
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const [sort, setSort] = useState(DEFAULT_ORDER_SORT);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isManualWaybillOpen, setIsManualWaybillOpen] = useState(false);
   const [isLookingUpWaybill, setIsLookingUpWaybill] = useState(false);
@@ -110,9 +122,17 @@ export default function OrdersTab() {
   );
 
   const visibleOrders = useMemo(() => {
-    if (statusFilter === "all") return orders;
-    return orders.filter((order) => order.status === statusFilter);
-  }, [orders, statusFilter]);
+    const filtered =
+      statusFilter === "all"
+        ? orders
+        : orders.filter((order) => order.status === statusFilter);
+
+    return sortOrders(filtered, sort);
+  }, [orders, statusFilter, sort]);
+
+  const isSortActive =
+    sort.field !== DEFAULT_ORDER_SORT.field ||
+    sort.direction !== DEFAULT_ORDER_SORT.direction;
 
   // --- Selection and bulk actions ---
 
@@ -295,6 +315,16 @@ export default function OrdersTab() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.iconButton, isSortActive && styles.iconButtonActive]}
+          onPress={() => setIsSortOpen(true)}
+        >
+          <ArrowUpDown
+            size={18}
+            color={isSortActive ? colors.accent : colors.text}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.addButton}
           onPress={() => router.push("/add-order")}
         >
@@ -405,6 +435,13 @@ export default function OrdersTab() {
         onApply={setDateFilters}
       />
 
+      <OrderSortModal
+        visible={isSortOpen}
+        onClose={() => setIsSortOpen(false)}
+        sort={sort}
+        onApply={setSort}
+      />
+
       <OrderActionSheet
         order={actionSheetOrder}
         onClose={() => setActionSheetOrder(null)}
@@ -503,6 +540,10 @@ function createStyles(colors) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    iconButtonActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.surfaceSoft,
     },
     addButton: {
       width: 40,
