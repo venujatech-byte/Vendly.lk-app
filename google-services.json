@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "397682394833",
+    "project_id": "vendly-lk",
+    "storage_bucket": "vendly-lk.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:397682394833:android:210452cb0d37195953a7f0",
+        "android_client_info": {
+          "package_name": "lk.vendly.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "397682394833-lci24fhvktoqlg7dtcv3mnndhuduvnn4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBiUEPZltqBcy1DnpYOk0PJcyANEcqC6As"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "397682394833-lci24fhvktoqlg7dtcv3mnndhuduvnn4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
