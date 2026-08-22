@@ -86,6 +86,20 @@ function AuthProvider({ children }) {
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setIsAuthLoading(true);
+
+      // Password accounts must verify their email before the backend will
+      // accept their token. Sign them out here, before ever calling /me,
+      // instead of racing loginWithEmail's own (later) verification check.
+      const isUnverifiedPasswordAccount =
+        currentUser &&
+        !currentUser.emailVerified &&
+        currentUser.providerData.some((provider) => provider.providerId === "password");
+
+      if (isUnverifiedPasswordAccount) {
+        await signOut(auth);
+        return;
+      }
+
       setUser(currentUser);
 
       try {
