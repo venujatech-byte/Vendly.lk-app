@@ -99,6 +99,24 @@ export default function OrdersTab() {
     <View style={styles.screen}>
       <ScreenHeader title="Orders" />
 
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={stats}
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={styles.statsRow}
+        renderItem={({ item }) => (
+          <StatCard2
+            label={item.label}
+            value={item.count}
+            icon={item.icon}
+            tone={item.tone}
+            isActive={statusFilter === item.key}
+            onPress={() => setStatusFilter(item.key)}
+          />
+        )}
+      />
+
       <View style={styles.toolbar}>
         <View style={styles.searchBox}>
           <Search size={16} color={colors.subtle} />
@@ -123,24 +141,6 @@ export default function OrdersTab() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={stats}
-        keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.statsRow}
-        renderItem={({ item }) => (
-          <StatCard2
-            label={item.label}
-            value={item.count}
-            icon={item.icon}
-            tone={item.tone}
-            isActive={statusFilter === item.key}
-            onPress={() => setStatusFilter(item.key)}
-          />
-        )}
-      />
-
       {ordersError && (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>Orders could not be loaded.</Text>
@@ -151,6 +151,7 @@ export default function OrdersTab() {
         <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 32 }} />
       ) : (
         <FlatList
+          style={styles.ordersList}
           data={visibleOrders}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
@@ -187,7 +188,6 @@ function createStyles(colors) {
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 16,
-      paddingTop: 14,
       gap: 8,
     },
     searchBox: {
@@ -242,6 +242,9 @@ function createStyles(colors) {
       color: colors.danger,
       fontSize: 13,
       fontWeight: "500",
+    },
+    ordersList: {
+      flex: 1,
     },
     listContent: {
       paddingHorizontal: 16,
