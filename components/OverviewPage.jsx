@@ -8,20 +8,12 @@ import {
   Package2,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-
-import { LogOut } from "lucide-react-native";
-import { TouchableOpacity } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "../context/authContextValue";
-import { logoutUser } from "../services/authService";
+import { useAppTheme } from "../context/ThemeContext";
 import { getAnalyticsOverview } from "../services/analyticsService";
+import ScreenHeader from "./ScreenHeader";
 
 const TONES = {
   blue: { icon: "#1d75e8e0", background: "#e8f1ff" },
@@ -31,7 +23,7 @@ const TONES = {
   red: { icon: "#ef4444", background: "#feecec" },
 };
 
-function StatCard({ label, value, icon: Icon, tone = "blue" }) {
+function StatCard({ label, value, icon: Icon, tone = "blue", styles }) {
   const colors = TONES[tone] ?? TONES.blue;
 
   return (
@@ -49,6 +41,8 @@ function StatCard({ label, value, icon: Icon, tone = "blue" }) {
 }
 
 function OverviewPage() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { sellerProfile, business } = useAuth();
   const businessName = sellerProfile?.businessName ?? "Your Business";
   const [analytics, setAnalytics] = useState(null);
@@ -117,200 +111,170 @@ function OverviewPage() {
     : [];
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.screenContent}
-    >
-      <View style={styles.introRow}>
+    <View style={styles.screen}>
+      <ScreenHeader title="Overview" />
+
+      <ScrollView contentContainerStyle={styles.screenContent}>
         <View style={styles.intro}>
           <Text style={styles.introTitle}>Hi! {businessName}</Text>
           <Text style={styles.introSubtitle}>Here is your business summary.</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={() => logoutUser()}
-        >
-          <LogOut size={20} color="#526b87" />
-        </TouchableOpacity>
-      </View>
+        {analyticsError && (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>
+              The current business summary could not be loaded.
+            </Text>
+          </View>
+        )}
 
-      {analyticsError && (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            The current business summary could not be loaded.
-          </Text>
-        </View>
-      )}
+        {isLoading && !analytics && (
+          <ActivityIndicator size="small" color={colors.accent} style={styles.loader} />
+        )}
 
-      {isLoading && !analytics && (
-        <ActivityIndicator
-          size="small"
-          color="#168cf5"
-          style={styles.loader}
-        />
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Order Dashboard</Text>
-
-        <View style={styles.statsGrid}>
-          {orderStats.map((stat) => (
-            <StatCard
-              key={stat.label}
-              label={stat.label}
-              value={stat.value}
-              icon={stat.icon}
-              tone={stat.tone}
-            />
-          ))}
-        </View>
-      </View>
-
-      {workCentreItems.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Today&apos;s work centre</Text>
+          <Text style={styles.sectionTitle}>Order Dashboard</Text>
 
-          <View style={styles.workGrid}>
-            {workCentreItems.map((item) => (
-              <View key={item} style={styles.workItem}>
-                <Text style={styles.workItemText}>{item}</Text>
-              </View>
+          <View style={styles.statsGrid}>
+            {orderStats.map((stat) => (
+              <StatCard
+                key={stat.label}
+                label={stat.label}
+                value={stat.value}
+                icon={stat.icon}
+                tone={stat.tone}
+                styles={styles}
+              />
             ))}
           </View>
         </View>
-      )}
-    </ScrollView>
+
+        {workCentreItems.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Today&apos;s work centre</Text>
+
+            <View style={styles.workGrid}>
+              {workCentreItems.map((item) => (
+                <View key={item} style={styles.workItem}>
+                  <Text style={styles.workItemText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  screenContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
-  },
-  introRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  intro: {
-    flexShrink: 1,
-  },
-  logoutButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dbe4ee",
-  },
-  introTitle: {
-    color: "#08213f",
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  introSubtitle: {
-    color: "#526b87",
-    fontSize: 14,
-  },
-  notice: {
-    borderRadius: 10,
-    backgroundColor: "#feecec",
-    borderWidth: 1,
-    borderColor: "#ef4444",
-    padding: 12,
-    marginBottom: 14,
-  },
-  noticeText: {
-    color: "#b91c1c",
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  loader: {
-    marginVertical: 16,
-  },
-  section: {
-    marginTop: 18,
-  },
-  sectionTitle: {
-    color: "#102f50",
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 14,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  statCard: {
-    flexGrow: 1,
-    width: "47%",
-    minHeight: 82,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderRadius: 8,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dbe4ee",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statCardIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statCardContent: {
-    flexShrink: 1,
-    gap: 3,
-  },
-  statCardLabel: {
-    color: "#102f50",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  statCardValue: {
-    color: "#08213f",
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  workGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  workItem: {
-    flexGrow: 1,
-    width: "47%",
-    padding: 13,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#dbe4ee",
-    backgroundColor: "#ffffff",
-  },
-  workItemText: {
-    color: "#102f50",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    screenContent: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 32,
+    },
+    intro: {
+      marginBottom: 10,
+    },
+    introTitle: {
+      color: colors.textStrong,
+      fontSize: 24,
+      fontWeight: "700",
+      marginBottom: 6,
+    },
+    introSubtitle: {
+      color: colors.muted,
+      fontSize: 14,
+    },
+    notice: {
+      borderRadius: 10,
+      backgroundColor: colors.dangerBackground,
+      borderWidth: 1,
+      borderColor: colors.dangerBorder,
+      padding: 12,
+      marginBottom: 14,
+    },
+    noticeText: {
+      color: colors.danger,
+      fontSize: 13,
+      fontWeight: "500",
+    },
+    loader: {
+      marginVertical: 16,
+    },
+    section: {
+      marginTop: 18,
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: 20,
+      fontWeight: "700",
+      marginBottom: 14,
+    },
+    statsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 12,
+    },
+    statCard: {
+      flexGrow: 1,
+      width: "47%",
+      minHeight: 82,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      padding: 14,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    statCardIcon: {
+      width: 50,
+      height: 50,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    statCardContent: {
+      flexShrink: 1,
+      gap: 3,
+    },
+    statCardLabel: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    statCardValue: {
+      color: colors.textStrong,
+      fontSize: 22,
+      fontWeight: "700",
+    },
+    workGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    workItem: {
+      flexGrow: 1,
+      width: "47%",
+      padding: 13,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    workItemText: {
+      color: colors.text,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+  });
+}
 
 export default OverviewPage;
