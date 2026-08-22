@@ -25,7 +25,7 @@ import {
 
 import BarcodeScannerModal from "@/components/orders/BarcodeScannerModal";
 import BulkActionsBar from "@/components/orders/BulkActionsBar";
-import OrderActionSheet from "@/components/orders/OrderActionSheet";
+import OrderActionsMenu from "@/components/orders/OrderActionsMenu";
 import OrderFiltersModal from "@/components/orders/OrderFiltersModal";
 import OrderRow from "@/components/orders/OrderRow";
 import OrderSortModal from "@/components/orders/OrderSortModal";
@@ -37,6 +37,11 @@ import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { getCouriers } from "@/services/courierService";
+import {
+  generateOrderWaybill,
+  reportCourierIssue,
+  reportFraudOrder,
+} from "@/services/operationService";
 import { getOrders, removeOrder, updateOrderStatus } from "@/services/orderService";
 
 export default function OrdersTab() {
@@ -231,34 +236,41 @@ export default function OrdersTab() {
     await Share.share({ message: `${webAppUrl}/s/${business.shortCode}` });
   }
 
-  function handleRemoveOrder(order) {
-    setActionSheetOrder(null);
+  // --- Handlers for the row action menu ---
 
-    Alert.alert(
-      "Remove order",
-      `Cancel order #${order.orderNumber}? This releases any reserved stock.`,
-      [
-        { text: "Keep order", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const removed = await removeOrder(business.id, order.id);
-              setOrders((current) =>
-                current.filter((item) => item.id !== removed.id),
-              );
-            } catch (error) {
-              Alert.alert(
-                "Could not remove order",
-                error.message ?? "Please try again.",
-              );
-            }
-          },
-        },
-      ],
+  function replaceOrder(updatedOrder) {
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === updatedOrder.id ? updatedOrder : order,
+      ),
     );
+    return updatedOrder;
   }
+
+  const actionMenuHandlers = {
+    onStatusChange: async (orderId, status) => {
+      replaceOrder(await updateOrderStatus(business.id, orderId, status));
+    },
+    onGenerateWaybill: async (orderId) =>
+      replaceOrder(await generateOrderWaybill(business.id, orderId)),
+    onFraudReport: async (orderId, note) => {
+      await reportFraudOrder(business.id, orderId, "fake-details", note);
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === orderId
+            ? { ...order, fraudReport: { status: "active", reason: "fake-details" } }
+            : order,
+        ),
+      );
+    },
+    onCourierIssue: async (orderId, note) => {
+      await reportCourierIssue(business.id, orderId, "branch-problem", note);
+    },
+    onRemove: async (orderId) => {
+      const removed = await removeOrder(business.id, orderId);
+      setOrders((current) => current.filter((item) => item.id !== removed.id));
+    },
+  };
 
   // Look a scanned/typed waybill up and jump straight to that order.
   async function openOrderByWaybill(waybillNumber) {
@@ -442,7 +454,7 @@ export default function OrdersTab() {
         onApply={setSort}
       />
 
-      <OrderActionSheet
+      <OrderActionsMenu
         order={actionSheetOrder}
         onClose={() => setActionSheetOrder(null)}
         onEdit={() => {
@@ -450,7 +462,7 @@ export default function OrdersTab() {
           setActionSheetOrder(null);
           router.push(`/order/${order.id}`);
         }}
-        onRemove={() => handleRemoveOrder(actionSheetOrder)}
+        {...actionMenuHandlers}
       />
 
       <BarcodeScannerModal

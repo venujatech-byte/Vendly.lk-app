@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, MoreVertical } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import OrderActionsMenu from "@/components/orders/OrderActionsMenu";
 import OrderDetailsPanel from "@/components/orders/OrderDetailsPanel";
 import StatusPill from "@/components/orders/StatusPill";
 import { useAuth } from "@/context/authContextValue";
@@ -20,7 +21,12 @@ import {
   reportCourierIssue,
   reportFraudOrder,
 } from "@/services/operationService";
-import { getOrder, updateOrder, updateOrderStatus } from "@/services/orderService";
+import {
+  getOrder,
+  removeOrder,
+  updateOrder,
+  updateOrderStatus,
+} from "@/services/orderService";
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -32,6 +38,7 @@ export default function OrderDetailScreen() {
   const [order, setOrder] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
 
   const loadOrder = useCallback(async () => {
     if (!business?.id || !id) return;
@@ -114,11 +121,29 @@ export default function OrderDetailScreen() {
         </View>
 
         <StatusPill status={order.status} />
+
+        <TouchableOpacity
+          style={styles.moreButton}
+          onPress={() => setIsActionsOpen(true)}
+          hitSlop={8}
+        >
+          <MoreVertical size={20} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <OrderDetailsPanel order={order} {...detailHandlers} />
       </ScrollView>
+
+      <OrderActionsMenu
+        order={isActionsOpen ? order : null}
+        onClose={() => setIsActionsOpen(false)}
+        {...detailHandlers}
+        onRemove={async (orderId) => {
+          await removeOrder(business.id, orderId);
+          router.back();
+        }}
+      />
     </View>
   );
 }
@@ -157,6 +182,12 @@ function createStyles(colors, topInset) {
     },
     backButton: {
       width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    moreButton: {
+      width: 28,
       height: 32,
       alignItems: "center",
       justifyContent: "center",

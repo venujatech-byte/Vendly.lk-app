@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Share,
   StyleSheet,
   Text,
@@ -23,6 +24,9 @@ import { STATUS_LABELS, STATUS_TRANSITIONS } from "../../constants/orderStatus";
 import { useAppTheme } from "../../context/ThemeContext";
 import { buildWaybillText } from "../../services/operationService";
 import PromptModal from "./PromptModal";
+
+// Statuses that release reserved stock, so they always confirm first.
+const DESTRUCTIVE_STATUSES = new Set(["cancelled", "returned"]);
 
 function readableStatus(status = "") {
   return (
@@ -78,6 +82,31 @@ export default function OrderDetailsPanel({
     } finally {
       setIsWorking(false);
     }
+  }
+
+  // Cancelling or returning releases reserved stock, so confirm first.
+  function handleStatusPress(status) {
+    if (!DESTRUCTIVE_STATUSES.has(status)) {
+      runAction(() => onStatusChange?.(order.id, status));
+      return;
+    }
+
+    const isCancelling = status === "cancelled";
+
+    Alert.alert(
+      isCancelling ? "Cancel order" : "Mark as returned",
+      isCancelling
+        ? `Cancel order #${order.orderNumber}? Any reserved stock is released back to inventory.`
+        : `Mark order #${order.orderNumber} as returned? Its stock is released back to inventory.`,
+      [
+        { text: "Keep as is", style: "cancel" },
+        {
+          text: isCancelling ? "Cancel order" : "Mark returned",
+          style: "destructive",
+          onPress: () => runAction(() => onStatusChange?.(order.id, status)),
+        },
+      ],
+    );
   }
 
   function handleShareWaybill() {
@@ -236,7 +265,7 @@ export default function OrderDetailsPanel({
             <TouchableOpacity
               key={status}
               style={styles.statusButton}
-              onPress={() => runAction(() => onStatusChange?.(order.id, status))}
+              onPress={() => handleStatusPress(status)}
               disabled={isWorking}
             >
               <Text style={styles.statusButtonText}>{readableStatus(status)}</Text>
