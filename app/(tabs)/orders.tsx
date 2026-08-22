@@ -1,10 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Filter, Plus, Search } from "lucide-react-native";
+import { Download, Filter, Link2, Plus, ScanLine, Search } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
+  ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -12,15 +15,28 @@ import {
   View,
 } from "react-native";
 
-import OrderCard from "@/components/orders/OrderCard";
+import BulkActionsBar from "@/components/orders/BulkActionsBar";
+import OrderActionSheet from "@/components/orders/OrderActionSheet";
 import OrderFiltersModal from "@/components/orders/OrderFiltersModal";
+import OrderRow from "@/components/orders/OrderRow";
+import PromptModal from "@/components/orders/PromptModal";
 import StatCard2 from "@/components/orders/StatCard2";
 import ScreenHeader from "@/components/ScreenHeader";
 import { ORDER_STAT_DEFINITIONS } from "@/constants/orderStatus";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { getCouriers } from "@/services/courierService";
-import { getOrders } from "@/services/orderService";
+import {
+  generateOrderWaybill,
+  reportCourierIssue,
+  reportFraudOrder,
+} from "@/services/operationService";
+import {
+  getOrders,
+  removeOrder,
+  updateOrder,
+  updateOrderStatus,
+} from "@/services/orderService";
 
 export default function OrdersTab() {
   const { colors } = useAppTheme();
@@ -37,8 +53,17 @@ export default function OrdersTab() {
     typeof params.search === "string" ? params.search : "",
   );
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilters, setDateFilters] = useState({ dateFrom: "", dateTo: "", courierId: "" });
+  const [dateFilters, setDateFilters] = useState({
+    dateFrom: "",
+    dateTo: "",
+    courierId: "",
+  });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isScanOpen, setIsScanOpen] = useState(false);
+
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState([]);
+  const [actionSheetOrder, setActionSheetOrder] = useState(null);
 
   const loadOrders = useCallback(async () => {
     if (!business?.id) {
@@ -80,42 +105,216 @@ export default function OrdersTab() {
     loadOrders();
   }
 
-  const stats = useMemo(() => {
-    return ORDER_STAT_DEFINITIONS.map((definition) => ({
-      ...definition,
-      count:
-        definition.key === "all"
-          ? orders.length
-          : orders.filter((order) => order.status === definition.key).length,
-    }));
-  }, [orders]);
+  function replaceOrder(updatedOrder) {
+    setOrders((current) =>
+      current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
+    );
+    return updatedOrder;
+  }
+
+  const stats = useMemo(
+    () =>
+      ORDER_STAT_DEFINITIONS.map((definition) => ({
+        ...definition,
+        count:
+          definition.key === "all"
+            ? orders.length
+            : orders.filter((order) => order.status === definition.key).length,
+      })),
+    [orders],
+  );
 
   const visibleOrders = useMemo(() => {
     if (statusFilter === "all") return orders;
     return orders.filter((order) => order.status === statusFilter);
   }, [orders, statusFilter]);
 
+  // --- Row-level handlers passed down into the expanded details panel ---
+
+  async function handleStatusChange(orderId, status) {
+    replaceOrder(await updateOrderStatus(business.id, orderId, status));
+  }
+
+  async function handleGenerateWaybill(orderId) {
+    return replaceOrder(await generateOrderWaybill(business.id, orderId));
+  }
+
+  async function handleWaybillSave(orderId, waybillNumber) {
+    return replaceOrder(await updateOrder(business.id, orderId, { waybillNumber }));
+  }
+
+  async function handleFraudReport(orderId, note) {
+    await reportFraudOrder(business.id, orderId, "fake-details", note);
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === orderId
+          ? { ...order, fraudReport: { status: "active", reason: "fake-details" } }
+          : order,
+      ),
+    );
+  }
+
+  async function handleCourierIssue(orderId, note) {
+    await reportCourierIssue(business.id, orderId, "branch-problem", note);
+  }
+
+  // --- Selection and bulk actions ---
+
+  function toggleSelectedOrder(orderId) {
+    setSelectedOrderIds((current) =>
+      current.includes(orderId)
+        ? current.filter((id) => id !== orderId)
+        : [...current, orderId],
+    );
+  }
+
+  async function handleBulkStatusChange(status) {
+    try {
+      const updatedOrders = await Promise.all(
+        selectedOrderIds.map((orderId) =>
+          updateOrderStatus(business.id, orderId, status),
+        ),
+      );
+
+      setOrders((current) =>
+        current.map(
+          (order) =>
+            updatedOrders.find((updated) => updated.id === order.id) ?? order,
+        ),
+      );
+      setSelectedOrderIds([]);
+    } catch (error) {
+      Alert.alert("Could not update orders", error.message ?? "Please try again.");
+    }
+  }
+
+  function buildCsv(rows) {
+    const columns = [
+      "Order number",
+      "Customer",
+      "Phone",
+      "Items",
+      "Subtotal",
+      "Delivery fee",
+      "Total",
+      "Courier",
+      "Status",
+      "Date",
+    ];
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+
+    const dataRows = rows.map((order) => [
+      order.orderNumber,
+      order.customerName,
+      order.phoneNumber,
+      order.itemCount,
+      order.subtotal,
+      order.deliveryFee,
+      order.total,
+      order.courier,
+      order.status,
+      `${order.date} ${order.time}`,
+    ]);
+
+    return [columns, ...dataRows]
+      .map((row) => row.map(escape).join(","))
+      .join("\r\n");
+  }
+
+  async function handleExportSelected() {
+    const selectedOrders = visibleOrders.filter((order) =>
+      selectedOrderIds.includes(order.id),
+    );
+
+    await Share.share({ message: buildCsv(selectedOrders) });
+    setSelectedOrderIds([]);
+  }
+
+  async function handleExportAll() {
+    if (visibleOrders.length === 0) {
+      Alert.alert("Nothing to export", "There are no orders in the current view.");
+      return;
+    }
+
+    await Share.share({ message: buildCsv(visibleOrders) });
+  }
+
+  async function handleShareChatbotLink() {
+    if (!business?.shortCode) {
+      Alert.alert(
+        "No chatbot link yet",
+        "This business does not have a chatbot short code assigned.",
+      );
+      return;
+    }
+
+    const webAppUrl = (
+      process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://vendly.lk"
+    ).replace(/\/$/, "");
+
+    await Share.share({ message: `${webAppUrl}/s/${business.shortCode}` });
+  }
+
+  function handleRemoveOrder(order) {
+    setActionSheetOrder(null);
+
+    Alert.alert(
+      "Remove order",
+      `Cancel order #${order.orderNumber}? This releases any reserved stock.`,
+      [
+        { text: "Keep order", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const removed = await removeOrder(business.id, order.id);
+              setOrders((current) =>
+                current.filter((item) => item.id !== removed.id),
+              );
+            } catch (error) {
+              Alert.alert(
+                "Could not remove order",
+                error.message ?? "Please try again.",
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  const detailHandlers = {
+    onStatusChange: handleStatusChange,
+    onGenerateWaybill: handleGenerateWaybill,
+    onWaybillSave: handleWaybillSave,
+    onFraudReport: handleFraudReport,
+    onCourierIssue: handleCourierIssue,
+  };
+
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Orders" />
 
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={stats}
-        keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.statsRow}
-        renderItem={({ item }) => (
-          <StatCard2
-            label={item.label}
-            value={item.count}
-            icon={item.icon}
-            tone={item.tone}
-            isActive={statusFilter === item.key}
-            onPress={() => setStatusFilter(item.key)}
-          />
-        )}
-      />
+      <View style={styles.statsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsRow}
+        >
+          {stats.map((stat) => (
+            <StatCard2
+              key={stat.key}
+              label={stat.label}
+              value={stat.count}
+              icon={stat.icon}
+              tone={stat.tone}
+              isActive={statusFilter === stat.key}
+              onPress={() => setStatusFilter(stat.key)}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
       <View style={styles.toolbar}>
         <View style={styles.searchBox}>
@@ -129,7 +328,10 @@ export default function OrdersTab() {
           />
         </View>
 
-        <TouchableOpacity style={styles.iconButton} onPress={() => setIsFiltersOpen(true)}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setIsFiltersOpen(true)}
+        >
           <Filter size={18} color={colors.text} />
         </TouchableOpacity>
 
@@ -141,6 +343,35 @@ export default function OrdersTab() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => setIsScanOpen(true)}
+        >
+          <ScanLine size={15} color={colors.text} />
+          <Text style={styles.actionButtonText}>Scan waybill</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton} onPress={handleShareChatbotLink}>
+          <Link2 size={15} color={colors.text} />
+          <Text style={styles.actionButtonText}>Chatbot link</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton} onPress={handleExportAll}>
+          <Download size={15} color={colors.text} />
+          <Text style={styles.actionButtonText}>Export</Text>
+        </TouchableOpacity>
+      </View>
+
+      {selectedOrderIds.length > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedOrderIds.length}
+          onClear={() => setSelectedOrderIds([])}
+          onBulkStatusChange={handleBulkStatusChange}
+          onExportSelected={handleExportSelected}
+        />
+      )}
+
       {ordersError && (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>Orders could not be loaded.</Text>
@@ -148,7 +379,11 @@ export default function OrdersTab() {
       )}
 
       {isLoading ? (
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 32 }} />
+        <ActivityIndicator
+          size="large"
+          color={colors.accent}
+          style={{ marginTop: 32 }}
+        />
       ) : (
         <FlatList
           style={styles.ordersList}
@@ -161,8 +396,27 @@ export default function OrdersTab() {
           ListEmptyComponent={
             <Text style={styles.emptyText}>No orders match these filters.</Text>
           }
+          ListFooterComponent={
+            visibleOrders.length > 0 ? (
+              <Text style={styles.footerText}>
+                Showing {visibleOrders.length} of {orders.length} orders
+              </Text>
+            ) : null
+          }
           renderItem={({ item }) => (
-            <OrderCard order={item} onPress={() => router.push(`/order/${item.id}`)} />
+            <OrderRow
+              order={item}
+              isExpanded={expandedOrderId === item.id}
+              isSelected={selectedOrderIds.includes(item.id)}
+              onToggleExpanded={() =>
+                setExpandedOrderId((current) =>
+                  current === item.id ? null : item.id,
+                )
+              }
+              onToggleSelected={() => toggleSelectedOrder(item.id)}
+              onOpenActions={() => setActionSheetOrder(item)}
+              detailHandlers={detailHandlers}
+            />
           )}
         />
       )}
@@ -174,6 +428,32 @@ export default function OrdersTab() {
         couriers={couriers}
         onApply={setDateFilters}
       />
+
+      <OrderActionSheet
+        order={actionSheetOrder}
+        onClose={() => setActionSheetOrder(null)}
+        onEdit={() => {
+          const order = actionSheetOrder;
+          setActionSheetOrder(null);
+          router.push(`/order/${order.id}`);
+        }}
+        onRemove={() => handleRemoveOrder(actionSheetOrder)}
+      />
+
+      <PromptModal
+        visible={isScanOpen}
+        title="Scan waybill"
+        description="Enter or paste a waybill number to find its order."
+        defaultValue=""
+        placeholder="Waybill number"
+        confirmLabel="Search"
+        onCancel={() => setIsScanOpen(false)}
+        onConfirm={(value) => {
+          setIsScanOpen(false);
+          setSearchText(value.trim());
+          setStatusFilter("all");
+        }}
+      />
     </View>
   );
 }
@@ -183,6 +463,14 @@ function createStyles(colors) {
     screen: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    statsWrapper: {
+      height: 78,
+    },
+    statsRow: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      alignItems: "center",
     },
     toolbar: {
       flexDirection: "row",
@@ -225,9 +513,29 @@ function createStyles(colors) {
       justifyContent: "center",
       backgroundColor: colors.accent,
     },
-    statsRow: {
+    actionsRow: {
+      flexDirection: "row",
+      gap: 8,
       paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingTop: 10,
+      paddingBottom: 12,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      height: 36,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    actionButtonText: {
+      color: colors.text,
+      fontSize: 12,
+      fontWeight: "600",
     },
     notice: {
       marginHorizontal: 16,
@@ -255,6 +563,12 @@ function createStyles(colors) {
       fontSize: 14,
       textAlign: "center",
       marginTop: 40,
+    },
+    footerText: {
+      color: colors.subtle,
+      fontSize: 12,
+      textAlign: "center",
+      paddingVertical: 14,
     },
   });
 }
