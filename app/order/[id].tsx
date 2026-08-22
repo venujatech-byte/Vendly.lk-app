@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import StatusPill from "@/components/orders/StatusPill";
 import { STATUS_LABELS, STATUS_TRANSITIONS } from "@/constants/orderStatus";
@@ -21,7 +22,8 @@ import { getOrder, updateOrder, updateOrderStatus } from "@/services/orderServic
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams();
   const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, insets.top), [colors, insets.top]);
   const { business } = useAuth();
 
   const [order, setOrder] = useState(null);
@@ -225,7 +227,7 @@ export default function OrderDetailScreen() {
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, topInset) {
   return StyleSheet.create({
     screen: {
       flex: 1,
@@ -251,7 +253,7 @@ function createStyles(colors) {
       alignItems: "center",
       gap: 10,
       paddingHorizontal: 16,
-      paddingTop: 14,
+      paddingTop: 14 + topInset,
       paddingBottom: 14,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,

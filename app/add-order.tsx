@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -32,7 +33,8 @@ function formatLkr(amount) {
 
 export default function AddOrderScreen() {
   const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, insets.top), [colors, insets.top]);
   const { business } = useAuth();
 
   const [customerSearch, setCustomerSearch] = useState("");
@@ -461,7 +463,7 @@ export default function AddOrderScreen() {
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, topInset) {
   return StyleSheet.create({
     screen: {
       flex: 1,
@@ -472,7 +474,7 @@ function createStyles(colors) {
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      paddingTop: 14,
+      paddingTop: 14 + topInset,
       paddingBottom: 14,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,

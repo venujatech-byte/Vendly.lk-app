@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "../context/authContextValue";
 import { useAppTheme } from "../context/ThemeContext";
@@ -30,6 +31,7 @@ function businessInitials(name = "") {
 export default function ScreenHeader({ title }) {
   const { colors, theme, toggleTheme } = useAppTheme();
   const { sellerProfile, business } = useAuth();
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
@@ -105,7 +107,7 @@ export default function ScreenHeader({ title }) {
     );
   }
 
-  const styles = createStyles(colors);
+  const styles = createStyles(colors, insets.top);
 
   return (
     <View style={styles.header}>
@@ -201,14 +203,15 @@ export default function ScreenHeader({ title }) {
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, topInset) {
   return StyleSheet.create({
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 12,
-      minHeight: 56,
+      paddingTop: topInset,
+      minHeight: 56 + topInset,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,

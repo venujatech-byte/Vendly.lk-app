@@ -1,11 +1,13 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppTheme } from "../context/ThemeContext";
 
 // Mobile equivalent of the web Sidebar collapsing into a bottom navigation
-// bar — ports the exact colours/sizes from mobile.css's `.sidebar` overrides.
+// bar — ports the exact colours from mobile.css's `.sidebar` overrides, but
+// distributes tabs evenly (flex) instead of a fixed-width scrolling row so
+// all of them stay visible on a single phone-width screen.
 export default function BottomTabBar({ state, descriptors, navigation }) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -18,11 +20,7 @@ export default function BottomTabBar({ state, descriptors, navigation }) {
       end={{ x: 1, y: 1 }}
       style={styles.bar}
     >
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.navigation}
-      >
+      <View style={styles.navigation}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;
@@ -40,10 +38,9 @@ export default function BottomTabBar({ state, descriptors, navigation }) {
             }
           }
 
-          const iconColor = "#ffffff";
           const icon = options.tabBarIcon?.({
-            color: iconColor,
-            size: 20,
+            color: "#ffffff",
+            size: 18,
             focused: isFocused,
           });
 
@@ -58,7 +55,12 @@ export default function BottomTabBar({ state, descriptors, navigation }) {
 
           if (isFocused) {
             return (
-              <TouchableOpacity key={route.key} onPress={handlePress} activeOpacity={0.85}>
+              <TouchableOpacity
+                key={route.key}
+                onPress={handlePress}
+                activeOpacity={0.85}
+                style={styles.tab}
+              >
                 <LinearGradient
                   colors={colors.navActiveGradient}
                   start={{ x: 0, y: 0 }}
@@ -76,13 +78,13 @@ export default function BottomTabBar({ state, descriptors, navigation }) {
               key={route.key}
               onPress={handlePress}
               activeOpacity={0.7}
-              style={styles.link}
+              style={styles.tab}
             >
-              {content}
+              <View style={styles.link}>{content}</View>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     </LinearGradient>
   );
 }
@@ -90,29 +92,29 @@ export default function BottomTabBar({ state, descriptors, navigation }) {
 function createStyles(colors, bottomInset) {
   return StyleSheet.create({
     bar: {
-      height: 66 + bottomInset,
+      height: 64 + bottomInset,
       paddingBottom: bottomInset,
-      paddingHorizontal: 7,
+      paddingHorizontal: 4,
       paddingTop: 6,
       borderTopWidth: 1,
       borderTopColor: "rgba(255,255,255,0.16)",
     },
     navigation: {
+      flex: 1,
       flexDirection: "row",
-      gap: 4,
       alignItems: "center",
-      height: 54,
+    },
+    tab: {
+      flex: 1,
+      height: 52,
+      paddingHorizontal: 2,
     },
     link: {
-      minWidth: 68,
-      height: 54,
-      flexBasis: 68,
+      flex: 1,
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
       gap: 3,
-      paddingHorizontal: 7,
-      paddingVertical: 5,
       borderRadius: 10,
     },
     label: {
@@ -120,7 +122,6 @@ function createStyles(colors, bottomInset) {
       fontSize: 9,
       lineHeight: 11,
       textAlign: "center",
-      maxWidth: 76,
     },
   });
 }
