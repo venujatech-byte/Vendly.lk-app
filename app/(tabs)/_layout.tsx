@@ -1,33 +1,70 @@
 import { Tabs } from 'expo-router';
+import {
+  Box,
+  ChartNoAxesCombined,
+  ClipboardList,
+  LayoutDashboard,
+  Truck,
+  Users,
+} from 'lucide-react-native';
 import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAppTheme } from '@/context/ThemeContext';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { colors } = useAppTheme();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+        },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Overview',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color, size }) => <LayoutDashboard color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="orders"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Orders',
+          tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="inventory"
+        options={{
+          title: 'Inventory',
+          tabBarIcon: ({ color, size }) => <Box color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="couriers"
+        options={{
+          title: 'Couriers',
+          tabBarIcon: ({ color, size }) => <Truck color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="customers"
+        options={{
+          title: 'Customers',
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, size }) => <ChartNoAxesCombined color={color} size={size} />,
         }}
       />
     </Tabs>

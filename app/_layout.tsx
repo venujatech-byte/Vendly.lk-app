@@ -1,12 +1,16 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider as NavigationThemeProvider,
+} from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '@/context/AuthContext';
 import { useAuth } from '@/context/authContextValue';
+import { ThemeProvider, useAppTheme } from '@/context/ThemeContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -14,11 +18,12 @@ export const unstable_settings = {
 
 function RootNavigator() {
   const { isAuthLoading, isAuthenticated } = useAuth();
+  const { colors } = useAppTheme();
 
   if (isAuthLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#168cf5" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -28,6 +33,8 @@ function RootNavigator() {
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen name="add-order" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="order/[id]" options={{ headerShown: false }} />
       </Stack.Protected>
 
       <Stack.Protected guard={!isAuthenticated}>
@@ -37,14 +44,22 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function AppNavigation() {
+  const { theme } = useAppTheme();
 
   return (
+    <NavigationThemeProvider value={theme === 'dark' ? DarkTheme : DefaultTheme}>
+      <RootNavigator />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+    </NavigationThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <RootNavigator />
-        <StatusBar style="auto" />
+      <ThemeProvider>
+        <AppNavigation />
       </ThemeProvider>
     </AuthProvider>
   );
