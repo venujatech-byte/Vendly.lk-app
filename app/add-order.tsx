@@ -6,6 +6,7 @@ import {
   Info,
   Minus,
   Plus,
+  ScanLine,
   Search,
   X,
 } from "lucide-react-native";
@@ -24,6 +25,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import BarcodeScannerModal from "@/components/orders/BarcodeScannerModal";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { createCustomer, getCustomers } from "@/services/customerService";
@@ -90,6 +92,7 @@ export default function AddOrderScreen() {
   const [depositAmount, setDepositAmount] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProductScannerOpen, setIsProductScannerOpen] = useState(false);
 
   useEffect(() => {
     if (!business?.id) return;
@@ -198,6 +201,46 @@ export default function AddOrderScreen() {
   function chooseProduct(product) {
     setSelectedProductId(product.id);
     setVariantQuantities({});
+  }
+
+  // Each size carries its own barcode, so a scan resolves to one exact
+  // variant -- open its product's matrix with that size ready to add.
+  function handleProductBarcodeScanned(rawValue) {
+    setIsProductScannerOpen(false);
+    if (!rawValue) return;
+
+    const scannedBarcode = rawValue.trim();
+    let matchedProduct = null;
+    let matchedVariant = null;
+
+    for (const product of allProducts) {
+      const variant = (product.sizes ?? []).find(
+        (row) => row.barcode && row.barcode === scannedBarcode,
+      );
+      if (variant) {
+        matchedProduct = product;
+        matchedVariant = variant;
+        break;
+      }
+    }
+
+    if (!matchedProduct || !matchedVariant) {
+      Alert.alert("No match", `No product variant has the barcode "${scannedBarcode}".`);
+      return;
+    }
+
+    const isSameProduct = selectedProductId === matchedProduct.id;
+    setSelectedProductId(matchedProduct.id);
+    setVariantQuantities((current) => {
+      const base = isSameProduct ? current : {};
+      return {
+        ...base,
+        [matchedVariant.id]: Math.min(
+          matchedVariant.stock,
+          (base[matchedVariant.id] ?? 0) + 1,
+        ),
+      };
+    });
   }
 
   function changeVariantQuantity(variant, delta) {
@@ -524,15 +567,24 @@ export default function AddOrderScreen() {
 
         {!selectedProduct ? (
           <>
-            <View style={styles.searchBox}>
-              <Search size={16} color={colors.subtle} />
-              <TextInput
-                style={styles.searchInput}
-                value={productSearch}
-                onChangeText={setProductSearch}
-                placeholder="Search products"
-                placeholderTextColor={colors.subtle}
-              />
+            <View style={styles.itemSearchRow}>
+              <View style={[styles.searchBox, { flex: 1 }]}>
+                <Search size={16} color={colors.subtle} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={productSearch}
+                  onChangeText={setProductSearch}
+                  placeholder="Search products"
+                  placeholderTextColor={colors.subtle}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.scanButton}
+                onPress={() => setIsProductScannerOpen(true)}
+              >
+                <ScanLine size={18} color={colors.text} />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.resultsBox}>
@@ -929,6 +981,18 @@ export default function AddOrderScreen() {
         </TouchableOpacity>
       </View>
 
+      <BarcodeScannerModal
+        visible={isProductScannerOpen}
+        onClose={() => setIsProductScannerOpen(false)}
+        onScanned={(scannedValue) => {
+          if (scannedValue === null) {
+            setIsProductScannerOpen(false);
+            return;
+          }
+          handleProductBarcodeScanned(scannedValue);
+        }}
+      />
+
       <Modal
         visible={isCourierPickerOpen}
         animationType="slide"
@@ -1050,6 +1114,21 @@ function createStyles(colors, topInset, bottomInset) {
     searchInput: {
       flex: 1,
       color: colors.textStrong,
+    },
+    itemSearchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    scanButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
     },
     resultsBox: {
       borderWidth: 1,
