@@ -1,9 +1,19 @@
 import { router } from "expo-router";
-import { ArrowLeft, Minus, Plus, Search, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Info,
+  Minus,
+  Plus,
+  Search,
+  X,
+} from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,7 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
 import { createCustomer, getCustomers } from "@/services/customerService";
-import { getCouriers } from "@/services/courierService";
+import { getCouriers, recommendCouriers } from "@/services/courierService";
 import { createOrder } from "@/services/orderService";
 import { getProducts } from "@/services/productService";
 
@@ -47,7 +57,7 @@ export default function AddOrderScreen() {
   );
   const { business } = useAuth();
 
-  // "cart" collects who and what; "summary" reviews money and confirms.
+  // "cart" collects who, what and the courier; "summary" reviews money and confirms.
   const [step, setStep] = useState("cart");
 
   const [customerSearch, setCustomerSearch] = useState("");
@@ -64,10 +74,16 @@ export default function AddOrderScreen() {
 
   const [productSearch, setProductSearch] = useState("");
   const [allProducts, setAllProducts] = useState([]);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [variantQuantities, setVariantQuantities] = useState({});
   const [selectedItems, setSelectedItems] = useState([]);
 
   const [couriers, setCouriers] = useState([]);
   const [courierId, setCourierId] = useState("");
+  const [courierQuotes, setCourierQuotes] = useState([]);
+  const [isLoadingQuotes, setIsLoadingQuotes] = useState(false);
+  const [isCourierPickerOpen, setIsCourierPickerOpen] = useState(false);
+
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [discountAmount, setDiscountAmount] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
@@ -95,66 +111,139 @@ export default function AddOrderScreen() {
     return () => clearTimeout(timeout);
   }, [business?.id, customerSearch, isCreatingNewCustomer]);
 
-  const variantOptions = useMemo(() => {
+  const selectedProduct = allProducts.find((product) => product.id === selectedProductId);
+
+  const matchingProducts = useMemo(() => {
     const search = productSearch.trim().toLowerCase();
-    const flattened = allProducts.flatMap((product) =>
-      (product.sizes ?? []).map((variant) => ({
-        variantId: variant.id,
-        productName: product.name,
-        size: variant.size,
-        sku: variant.sku,
-        stock: variant.stock,
-        sellingPrice: variant.sellingPrice ?? product.sellingPrice ?? 0,
-      })),
-    );
+    if (!search) return allProducts.slice(0, 12);
 
-    if (!search) return flattened.slice(0, 20);
-
-    return flattened
+    return allProducts
       .filter(
-        (variant) =>
-          variant.productName?.toLowerCase().includes(search) ||
-          variant.sku?.toLowerCase().includes(search),
+        (product) =>
+          product.name?.toLowerCase().includes(search) ||
+          product.sku?.toLowerCase().includes(search) ||
+          (product.sizes ?? []).some((variant) =>
+            variant.sku?.toLowerCase().includes(search),
+          ),
       )
-      .slice(0, 20);
+      .slice(0, 12);
   }, [allProducts, productSearch]);
 
-  const selectedCourier = couriers.find((courier) => courier.id === courierId);
+  const matrixUnitCount = Object.values(variantQuantities).reduce(
+    (sum, quantity) => sum + quantity,
+    0,
+  );
+  const matrixTotal = Object.entries(variantQuantities).reduce(
+    (sum, [variantId, quantity]) => {
+      const variant = selectedProduct?.sizes.find((row) => row.id === variantId);
+      return sum + (variant ? variant.sellingPrice * quantity : 0);
+    },
+    0,
+  );
 
-  // The backend recalculates all of this on submit; this mirrors its maths so
-  // the seller sees the same numbers before committing.
-  const totals = useMemo(() => {
-    const subtotal = selectedItems.reduce(
-      (sum, item) => sum + item.sellingPrice * item.quantity,
-      0,
-    );
-    const discount = Math.min(toAmount(discountAmount), subtotal);
-    const deliveryFee = selectedCourier
-      ? (selectedCourier.firstKgPriceMinor ?? 0) / 100
-      : 0;
-    const total = Math.max(0, subtotal - discount + deliveryFee);
-    const deposit =
-      paymentMethod === "deposit"
-        ? Math.min(toAmount(depositAmount), total)
-        : paymentMethod === "paid"
-          ? total
-          : 0;
+  const subtotal = selectedItems.reduce(
+    (sum, item) => sum + item.sellingPrice * item.quantity,
+    0,
+  );
+  const discount = Math.min(toAmount(discountAmount), subtotal);
+  const totalWeightGrams = selectedItems.reduce(
+    (sum, item) => sum + (item.weightKg ?? 0) * 1000 * item.quantity,
+    0,
+  );
+  const selectedQuote = courierQuotes.find((row) => row.courier.id === courierId);
+  const deliveryFee = (selectedQuote?.deliveryFeeMinor ?? 0) / 100;
+  const total = Math.max(0, subtotal - discount + deliveryFee);
+  const deposit =
+    paymentMethod === "deposit"
+      ? Math.min(toAmount(depositAmount), total)
+      : paymentMethod === "paid"
+        ? total
+        : 0;
+  const balance = Math.max(0, total - deposit);
 
-    return { subtotal, discount, deliveryFee, total, deposit, balance: total - deposit };
-  }, [selectedItems, discountAmount, selectedCourier, paymentMethod, depositAmount]);
+  // Re-quote couriers whenever the weight or district that drives the fee
+  // changes, so the chip always shows a live, backend-calculated price.
+  useEffect(() => {
+    const district = addressDistrict.trim();
 
-  function addItem(variant) {
-    setSelectedItems((current) => {
-      const existing = current.find((item) => item.variantId === variant.variantId);
-      if (existing) {
-        return current.map((item) =>
-          item.variantId === variant.variantId
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        );
-      }
-      return [...current, { ...variant, quantity: 1 }];
+    if (!business?.id || !district || totalWeightGrams <= 0) {
+      setCourierQuotes([]);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setIsLoadingQuotes(true);
+
+    const timeout = setTimeout(() => {
+      recommendCouriers(business.id, totalWeightGrams, district)
+        .then((recommendations) => {
+          if (!isCurrent) return;
+          setCourierQuotes(recommendations ?? []);
+          setCourierId((current) => {
+            if (recommendations?.some((row) => row.courier.id === current)) return current;
+            return recommendations?.[0]?.courier.id ?? "";
+          });
+        })
+        .catch(() => isCurrent && setCourierQuotes([]))
+        .finally(() => isCurrent && setIsLoadingQuotes(false));
+    }, 300);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeout);
+    };
+  }, [business?.id, totalWeightGrams, addressDistrict]);
+
+  function chooseProduct(product) {
+    setSelectedProductId(product.id);
+    setVariantQuantities({});
+  }
+
+  function changeVariantQuantity(variant, delta) {
+    setVariantQuantities((current) => {
+      const next = Math.max(0, Math.min(variant.stock, (current[variant.id] ?? 0) + delta));
+      const updated = { ...current, [variant.id]: next };
+      if (next === 0) delete updated[variant.id];
+      return updated;
     });
+  }
+
+  function addMatrixToOrder() {
+    if (!selectedProduct || matrixUnitCount === 0) return;
+
+    setSelectedItems((current) => {
+      let next = current;
+
+      for (const variant of selectedProduct.sizes) {
+        const quantity = variantQuantities[variant.id];
+        if (!quantity) continue;
+
+        const existing = next.find((item) => item.variantId === variant.id);
+        const row = {
+          variantId: variant.id,
+          productName: selectedProduct.name,
+          size: variant.size,
+          sku: variant.sku,
+          barcode: variant.barcode,
+          stock: variant.stock,
+          sellingPrice: variant.sellingPrice ?? selectedProduct.sellingPrice ?? 0,
+          weightKg: selectedProduct.weightKg,
+        };
+
+        next = existing
+          ? next.map((item) =>
+              item.variantId === variant.id
+                ? { ...item, quantity: item.quantity + quantity }
+                : item,
+            )
+          : [...next, { ...row, quantity }];
+      }
+
+      return next;
+    });
+
+    setSelectedProductId("");
+    setVariantQuantities({});
   }
 
   function changeItemQuantity(variantId, delta) {
@@ -205,13 +294,18 @@ export default function AddOrderScreen() {
       return;
     }
 
+    if (!courierId) {
+      Alert.alert("Choose a courier", "Pick a courier to get a delivery quote.");
+      return;
+    }
+
     setStep("summary");
   }
 
   async function handleCreateOrder() {
     if (!business?.id) return;
 
-    if (paymentMethod === "deposit" && totals.deposit <= 0) {
+    if (paymentMethod === "deposit" && deposit <= 0) {
       Alert.alert(
         "Enter the deposit",
         "Add how much the customer has already paid, or change the payment method.",
@@ -246,12 +340,12 @@ export default function AddOrderScreen() {
           variantId: item.variantId,
           quantity: item.quantity,
         })),
-        courierId: courierId || undefined,
+        courierId,
         deliveryAddress,
         paymentMethod,
         secondaryPhoneNumber: secondaryPhoneNumber.trim() || undefined,
-        discountAmount: totals.discount || undefined,
-        depositAmount: paymentMethod === "deposit" ? totals.deposit : undefined,
+        discountAmount: discount || undefined,
+        depositAmount: paymentMethod === "deposit" ? deposit : undefined,
       });
 
       router.replace(`/order/${order.id}`);
@@ -260,6 +354,47 @@ export default function AddOrderScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function renderCourierChip() {
+    const label = selectedQuote
+      ? selectedQuote.courier.name
+      : couriers.length === 0
+        ? "No couriers configured"
+        : isLoadingQuotes
+          ? "Fetching rates…"
+          : "Add items & district for rates";
+
+    return (
+      <>
+        <Text style={styles.sectionTitle}>Courier</Text>
+        <TouchableOpacity
+          style={styles.courierChip}
+          disabled={courierQuotes.length === 0}
+          onPress={() => setIsCourierPickerOpen(true)}
+        >
+          <View
+            style={[
+              styles.courierDot,
+              { backgroundColor: selectedQuote ? colors.success : colors.border },
+            ]}
+          />
+          <Text style={styles.courierChipText} numberOfLines={1}>
+            {label}
+          </Text>
+          {selectedQuote && <Text style={styles.courierChipFee}>{formatLkr(deliveryFee)}</Text>}
+          <ChevronDown size={15} color={colors.subtle} />
+        </TouchableOpacity>
+
+        <View style={styles.hintBox}>
+          <Info size={13} color={colors.subtle} />
+          <Text style={styles.hintText}>
+            District sets the courier surcharge, so it must be entered before a delivery
+            quote.
+          </Text>
+        </View>
+      </>
+    );
   }
 
   function renderCartStep() {
@@ -381,37 +516,147 @@ export default function AddOrderScreen() {
           placeholderTextColor={colors.subtle}
         />
 
-        <Text style={styles.sectionTitle}>Items</Text>
-        <View style={styles.searchBox}>
-          <Search size={16} color={colors.subtle} />
-          <TextInput
-            style={styles.searchInput}
-            value={productSearch}
-            onChangeText={setProductSearch}
-            placeholder="Search products"
-            placeholderTextColor={colors.subtle}
-          />
-        </View>
+        {renderCourierChip()}
 
-        <View style={styles.resultsBox}>
-          {variantOptions.map((variant) => (
-            <TouchableOpacity
-              key={variant.variantId}
-              style={styles.resultRow}
-              onPress={() => addItem(variant)}
-            >
+        <Text style={styles.sectionTitle}>Items</Text>
+
+        {!selectedProduct ? (
+          <>
+            <View style={styles.searchBox}>
+              <Search size={16} color={colors.subtle} />
+              <TextInput
+                style={styles.searchInput}
+                value={productSearch}
+                onChangeText={setProductSearch}
+                placeholder="Search products"
+                placeholderTextColor={colors.subtle}
+              />
+            </View>
+
+            <View style={styles.resultsBox}>
+              {matchingProducts.map((product) => (
+                <TouchableOpacity
+                  key={product.id}
+                  style={styles.resultRow}
+                  onPress={() => chooseProduct(product)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.line}>{product.name}</Text>
+                    <Text style={styles.lineMuted}>
+                      {product.sizes?.length ?? 0} sizes · {product.stock} in stock
+                    </Text>
+                  </View>
+                  <ChevronDown
+                    size={15}
+                    color={colors.subtle}
+                    style={{ transform: [{ rotate: "-90deg" }] }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : (
+          <View style={styles.matrix}>
+            <View style={styles.matrixHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.line}>
-                  {variant.productName} {variant.size ? `· ${variant.size}` : ""}
-                </Text>
+                <Text style={styles.matrixTitle}>{selectedProduct.name}</Text>
                 <Text style={styles.lineMuted}>
-                  {formatLkr(variant.sellingPrice)} · {variant.stock} in stock
+                  {selectedProduct.sizes.length} sizes · {selectedProduct.stock} in stock
                 </Text>
               </View>
-              <Plus size={16} color={colors.accent} />
-            </TouchableOpacity>
-          ))}
-        </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedProductId("");
+                  setVariantQuantities({});
+                }}
+              >
+                <Text style={styles.linkButtonText}>Change</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.matrixColumnHeads}>
+              <Text style={[styles.matrixHeadText, styles.matrixColSize]}>Size</Text>
+              <Text style={[styles.matrixHeadText, styles.matrixColStock]}>Stock</Text>
+              <Text style={[styles.matrixHeadText, styles.matrixColPrice]}>Price</Text>
+              <Text style={[styles.matrixHeadText, styles.matrixColQty]}>Qty</Text>
+            </View>
+
+            {selectedProduct.sizes.map((variant) => {
+              const quantity = variantQuantities[variant.id] ?? 0;
+              const soldOut = variant.stock <= 0;
+              const lowStock = !soldOut && variant.stock <= 5;
+
+              return (
+                <View
+                  key={variant.id}
+                  style={[
+                    styles.matrixRow,
+                    quantity > 0 && styles.matrixRowSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.matrixColSize,
+                      soldOut ? styles.matrixTextSoldOut : styles.matrixText,
+                    ]}
+                  >
+                    {variant.size || "—"}
+                  </Text>
+
+                  <View style={styles.matrixColStock}>
+                    {soldOut ? (
+                      <Text style={styles.soldOutTag}>Sold out</Text>
+                    ) : lowStock ? (
+                      <Text style={styles.lowStockTag}>{variant.stock}</Text>
+                    ) : (
+                      <Text style={styles.matrixText}>{variant.stock}</Text>
+                    )}
+                  </View>
+
+                  <Text style={[styles.matrixColPrice, styles.matrixText]}>
+                    {formatLkr(variant.sellingPrice)}
+                  </Text>
+
+                  <View style={[styles.matrixColQty, styles.matrixStepper]}>
+                    <TouchableOpacity
+                      style={styles.matrixStepButton}
+                      disabled={soldOut}
+                      onPress={() => changeVariantQuantity(variant, -1)}
+                    >
+                      <Minus size={11} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.matrixQtyValue}>{quantity}</Text>
+                    <TouchableOpacity
+                      style={styles.matrixStepButton}
+                      disabled={soldOut || quantity >= variant.stock}
+                      onPress={() => changeVariantQuantity(variant, 1)}
+                    >
+                      <Plus size={11} color={colors.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+
+            <View style={styles.matrixFooter}>
+              <Text style={styles.lineMuted}>
+                {matrixUnitCount > 0
+                  ? `${matrixUnitCount} unit(s) · ${formatLkr(matrixTotal)}`
+                  : "Choose a size to add it"}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.matrixAddButton,
+                  matrixUnitCount === 0 && styles.matrixAddButtonDisabled,
+                ]}
+                disabled={matrixUnitCount === 0}
+                onPress={addMatrixToOrder}
+              >
+                <Text style={styles.matrixAddButtonText}>Add to order</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {selectedItems.length > 0 && (
           <View style={styles.card}>
@@ -445,7 +690,7 @@ export default function AddOrderScreen() {
             <View style={styles.divider} />
             <View style={styles.totalRow}>
               <Text style={styles.cardTitle}>Subtotal</Text>
-              <Text style={styles.cardTitle}>{formatLkr(totals.subtotal)}</Text>
+              <Text style={styles.cardTitle}>{formatLkr(subtotal)}</Text>
             </View>
           </View>
         )}
@@ -458,17 +703,26 @@ export default function AddOrderScreen() {
       <>
         <Text style={styles.sectionTitle}>Order summary</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.summaryName}>
-            {isCreatingNewCustomer ? newCustomerName : selectedCustomer?.name}
-          </Text>
-          <Text style={styles.lineMuted}>
-            {phoneNumber}
-            {secondaryPhoneNumber ? ` · ${secondaryPhoneNumber}` : ""}
-          </Text>
-          <Text style={styles.lineMuted}>
-            {[addressLine1, addressCity, addressDistrict].filter(Boolean).join(", ")}
-          </Text>
+        <View style={styles.recapRow}>
+          <View style={[styles.card, styles.recapCard]}>
+            <Text style={styles.summaryName}>
+              {isCreatingNewCustomer ? newCustomerName : selectedCustomer?.name}
+            </Text>
+            <Text style={styles.lineMuted}>{phoneNumber}</Text>
+            <Text style={styles.lineMuted} numberOfLines={2}>
+              {[addressLine1, addressCity, addressDistrict].filter(Boolean).join(", ")}
+            </Text>
+          </View>
+
+          <View style={[styles.card, styles.recapCard]}>
+            <Text style={styles.summaryName}>{selectedQuote?.courier.name ?? "—"}</Text>
+            <Text style={styles.lineMuted}>{(totalWeightGrams / 1000).toFixed(2)} kg</Text>
+            <Text style={styles.lineMuted}>
+              {selectedQuote?.courier.averageDeliveryDays
+                ? `${selectedQuote.courier.averageDeliveryDays} day(s)`
+                : ""}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -486,26 +740,6 @@ export default function AddOrderScreen() {
                 {formatLkr(item.sellingPrice * item.quantity)}
               </Text>
             </View>
-          ))}
-        </View>
-
-        <Text style={styles.sectionTitle}>Courier</Text>
-        <View style={styles.chipWrap}>
-          {[{ id: "", name: "Not assigned" }, ...couriers].map((courier) => (
-            <TouchableOpacity
-              key={courier.id || "none"}
-              style={[styles.chip, courierId === courier.id && styles.chipActive]}
-              onPress={() => setCourierId(courier.id)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  courierId === courier.id && styles.chipTextActive,
-                ]}
-              >
-                {courier.name}
-              </Text>
-            </TouchableOpacity>
           ))}
         </View>
 
@@ -556,46 +790,50 @@ export default function AddOrderScreen() {
         <View style={[styles.card, styles.totalsCard]}>
           <View style={styles.totalRow}>
             <Text style={styles.lineMuted}>Subtotal</Text>
-            <Text style={styles.line}>{formatLkr(totals.subtotal)}</Text>
+            <Text style={styles.line}>{formatLkr(subtotal)}</Text>
           </View>
 
-          {totals.discount > 0 && (
+          {discount > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.lineMuted}>Discount</Text>
-              <Text style={styles.deduction}>-{formatLkr(totals.discount)}</Text>
+              <Text style={styles.deduction}>-{formatLkr(discount)}</Text>
             </View>
           )}
 
           <View style={styles.totalRow}>
-            <Text style={styles.lineMuted}>Delivery fee</Text>
-            <Text style={styles.line}>{formatLkr(totals.deliveryFee)}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Text style={styles.lineMuted}>Delivery fee</Text>
+              <Text style={styles.confirmedTag}>✓ confirmed</Text>
+            </View>
+            <Text style={styles.line}>{formatLkr(deliveryFee)}</Text>
           </View>
 
           <View style={styles.divider} />
 
           <View style={styles.totalRow}>
-            <Text style={styles.cardTitle}>Total</Text>
-            <Text style={styles.cardTitle}>{formatLkr(totals.total)}</Text>
+            <Text style={styles.cardTitle}>Order total</Text>
+            <Text style={styles.cardTitle}>{formatLkr(total)}</Text>
           </View>
 
-          {totals.deposit > 0 && (
-            <>
-              <View style={styles.totalRow}>
-                <Text style={styles.lineMuted}>
-                  {paymentMethod === "paid" ? "Paid" : "Deposit paid"}
-                </Text>
-                <Text style={styles.deduction}>-{formatLkr(totals.deposit)}</Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.totalRow}>
-                <Text style={styles.balanceLabel}>Balance to collect</Text>
-                <Text style={styles.balanceValue}>{formatLkr(totals.balance)}</Text>
-              </View>
-            </>
+          {deposit > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.lineMuted}>
+                {paymentMethod === "paid" ? "Paid" : "Deposit paid"}
+              </Text>
+              <Text style={styles.deduction}>-{formatLkr(deposit)}</Text>
+            </View>
           )}
         </View>
+
+        {deposit > 0 && (
+          <View style={styles.balanceCallout}>
+            <Text style={styles.balanceCalloutLabel}>Balance to collect</Text>
+            <Text style={styles.balanceCalloutValue}>{formatLkr(balance)}</Text>
+            <Text style={styles.balanceCalloutNote}>
+              {formatLkr(total)} total less {formatLkr(deposit)} already paid
+            </Text>
+          </View>
+        )}
       </>
     );
   }
@@ -628,13 +866,15 @@ export default function AddOrderScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        {isSummary && (
-          <Text style={styles.footerAmount}>
-            {totals.deposit > 0
-              ? `Collect ${formatLkr(totals.balance)}`
-              : formatLkr(totals.total)}
-          </Text>
-        )}
+        <Text style={styles.footerAmount}>
+          {isSummary
+            ? deposit > 0
+              ? `Collect ${formatLkr(balance)}`
+              : formatLkr(total)
+            : selectedQuote
+              ? formatLkr(subtotal)
+              : "Delivery calculated next"}
+        </Text>
 
         <TouchableOpacity
           style={styles.submitButton}
@@ -650,6 +890,53 @@ export default function AddOrderScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={isCourierPickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsCourierPickerOpen(false)}
+      >
+        <Pressable
+          style={styles.pickerBackdrop}
+          onPress={() => setIsCourierPickerOpen(false)}
+        >
+          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>Choose a courier</Text>
+
+            {courierQuotes.map((quote, index) => (
+              <TouchableOpacity
+                key={quote.courier.id}
+                style={[
+                  styles.pickerRow,
+                  quote.courier.id === courierId && styles.pickerRowActive,
+                ]}
+                onPress={() => {
+                  setCourierId(quote.courier.id);
+                  setIsCourierPickerOpen(false);
+                }}
+              >
+                <View
+                  style={[
+                    styles.pickerRadio,
+                    quote.courier.id === courierId && styles.pickerRadioActive,
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.line}>{quote.courier.name}</Text>
+                  <Text style={styles.lineMuted}>
+                    {quote.courier.averageDeliveryDays
+                      ? `${quote.courier.averageDeliveryDays} day(s)`
+                      : ""}
+                    {index === 0 ? " · Recommended" : ""}
+                  </Text>
+                </View>
+                <Text style={styles.cardTitle}>{formatLkr(quote.deliveryFeeMinor / 100)}</Text>
+              </TouchableOpacity>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -772,6 +1059,13 @@ function createStyles(colors, topInset, bottomInset) {
     totalsCard: {
       marginTop: 18,
     },
+    recapRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    recapCard: {
+      flex: 1,
+    },
     summaryName: {
       color: colors.textStrong,
       fontSize: 15,
@@ -812,6 +1106,7 @@ function createStyles(colors, topInset, bottomInset) {
     totalRow: {
       flexDirection: "row",
       justifyContent: "space-between",
+      alignItems: "center",
       paddingVertical: 2,
     },
     line: {
@@ -827,20 +1122,15 @@ function createStyles(colors, topInset, bottomInset) {
       fontSize: 14,
       fontWeight: "600",
     },
+    confirmedTag: {
+      color: colors.success,
+      fontSize: 11,
+      fontWeight: "700",
+    },
     cardTitle: {
       color: colors.textStrong,
       fontWeight: "700",
       fontSize: 14,
-    },
-    balanceLabel: {
-      color: colors.textStrong,
-      fontWeight: "700",
-      fontSize: 15,
-    },
-    balanceValue: {
-      color: colors.accent,
-      fontWeight: "700",
-      fontSize: 16,
     },
     chipWrap: {
       flexDirection: "row",
@@ -867,6 +1157,201 @@ function createStyles(colors, topInset, bottomInset) {
     chipTextActive: {
       color: "#ffffff",
     },
+    // Courier: a compact confirmation chip, opened into a bottom-sheet picker.
+    courierChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 9,
+      height: 42,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+    },
+    courierDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    courierChipText: {
+      flex: 1,
+      color: colors.textStrong,
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    courierChipFee: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    hintBox: {
+      flexDirection: "row",
+      gap: 7,
+      marginTop: 8,
+      padding: 9,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceSoft,
+    },
+    hintText: {
+      flex: 1,
+      color: colors.muted,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    // Variant matrix.
+    matrix: {
+      marginTop: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      overflow: "hidden",
+    },
+    matrixHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      padding: 11,
+      backgroundColor: colors.surfaceSoft,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    matrixTitle: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    matrixColumnHeads: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 7,
+      paddingHorizontal: 11,
+      backgroundColor: colors.surfaceSoft,
+    },
+    matrixHeadText: {
+      color: colors.subtle,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    matrixRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 9,
+      paddingHorizontal: 11,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    matrixRowSelected: {
+      backgroundColor: colors.surfaceSoft,
+    },
+    matrixColSize: {
+      width: 40,
+    },
+    matrixColStock: {
+      width: 56,
+    },
+    matrixColPrice: {
+      flex: 1,
+    },
+    matrixColQty: {
+      width: 84,
+    },
+    matrixText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    matrixTextSoldOut: {
+      color: colors.subtle,
+      fontSize: 13,
+      fontWeight: "600",
+      textDecorationLine: "line-through",
+    },
+    lowStockTag: {
+      color: "#b45309",
+      backgroundColor: "#fff4df",
+      fontSize: 11,
+      fontWeight: "700",
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 999,
+      alignSelf: "flex-start",
+    },
+    soldOutTag: {
+      color: colors.danger,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    matrixStepper: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      justifyContent: "flex-end",
+    },
+    matrixStepButton: {
+      width: 22,
+      height: 22,
+      borderRadius: 5,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    matrixQtyValue: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 13,
+      minWidth: 14,
+      textAlign: "center",
+    },
+    matrixFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      padding: 11,
+      backgroundColor: colors.surfaceSoft,
+    },
+    matrixAddButton: {
+      backgroundColor: colors.accent,
+      borderRadius: 7,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    matrixAddButtonDisabled: {
+      opacity: 0.5,
+    },
+    matrixAddButtonText: {
+      color: "#ffffff",
+      fontWeight: "700",
+      fontSize: 12,
+    },
+    balanceCallout: {
+      marginTop: 12,
+      padding: 14,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+    },
+    balanceCalloutLabel: {
+      color: "#b9d4ef",
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    balanceCalloutValue: {
+      color: "#ffffff",
+      fontSize: 22,
+      fontWeight: "700",
+      marginTop: 4,
+    },
+    balanceCalloutNote: {
+      color: "#9dc3e8",
+      fontSize: 11,
+      marginTop: 2,
+    },
     footer: {
       flexDirection: "row",
       alignItems: "center",
@@ -881,7 +1366,8 @@ function createStyles(colors, topInset, bottomInset) {
     footerAmount: {
       color: colors.textStrong,
       fontWeight: "700",
-      fontSize: 16,
+      fontSize: 15,
+      flexShrink: 1,
     },
     submitButton: {
       flex: 1,
@@ -894,6 +1380,46 @@ function createStyles(colors, topInset, bottomInset) {
       color: "#ffffff",
       fontWeight: "700",
       fontSize: 15,
+    },
+    pickerBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      justifyContent: "flex-end",
+    },
+    pickerSheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      padding: 18,
+      paddingBottom: 18 + bottomInset,
+    },
+    pickerTitle: {
+      color: colors.textStrong,
+      fontWeight: "700",
+      fontSize: 16,
+      marginBottom: 12,
+    },
+    pickerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    pickerRowActive: {
+      backgroundColor: colors.surfaceSoft,
+    },
+    pickerRadio: {
+      width: 15,
+      height: 15,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pickerRadioActive: {
+      borderWidth: 4,
+      borderColor: colors.accent,
     },
   });
 }
