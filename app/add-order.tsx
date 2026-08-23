@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import {
   ArrowLeft,
@@ -228,6 +229,7 @@ export default function AddOrderScreen() {
           stock: variant.stock,
           sellingPrice: variant.sellingPrice ?? selectedProduct.sellingPrice ?? 0,
           weightKg: selectedProduct.weightKg,
+          image: selectedProduct.images?.[0] ?? "",
         };
 
         next = existing
@@ -540,6 +542,15 @@ export default function AddOrderScreen() {
                   style={styles.resultRow}
                   onPress={() => chooseProduct(product)}
                 >
+                  {product.images?.[0] ? (
+                    <Image
+                      source={{ uri: product.images[0] }}
+                      style={styles.resultThumb}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={[styles.resultThumb, styles.thumbPlaceholder]} />
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={styles.line}>{product.name}</Text>
                     <Text style={styles.lineMuted}>
@@ -558,6 +569,15 @@ export default function AddOrderScreen() {
         ) : (
           <View style={styles.matrix}>
             <View style={styles.matrixHeader}>
+              {selectedProduct.images?.[0] ? (
+                <Image
+                  source={{ uri: selectedProduct.images[0] }}
+                  style={styles.matrixThumb}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={[styles.matrixThumb, styles.thumbPlaceholder]} />
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.matrixTitle}>{selectedProduct.name}</Text>
                 <Text style={styles.lineMuted}>
@@ -662,6 +682,15 @@ export default function AddOrderScreen() {
           <View style={styles.card}>
             {selectedItems.map((item) => (
               <View key={item.variantId} style={styles.itemRow}>
+                {item.image ? (
+                  <Image
+                    source={{ uri: item.image }}
+                    style={styles.itemThumb}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.itemThumb, styles.thumbPlaceholder]} />
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.line}>
                     {item.productName} {item.size ? `· ${item.size}` : ""}
@@ -728,6 +757,15 @@ export default function AddOrderScreen() {
         <View style={styles.card}>
           {selectedItems.map((item) => (
             <View key={item.variantId} style={styles.itemRow}>
+              {item.image ? (
+                <Image
+                  source={{ uri: item.image }}
+                  style={styles.itemThumb}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={[styles.itemThumb, styles.thumbPlaceholder]} />
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.line}>
                   {item.productName} {item.size ? `· ${item.size}` : ""}
@@ -1025,10 +1063,29 @@ function createStyles(colors, topInset, bottomInset) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    resultThumb: {
+      width: 36,
+      height: 36,
+      borderRadius: 8,
+    },
+    matrixThumb: {
+      width: 34,
+      height: 34,
+      borderRadius: 7,
+    },
+    itemThumb: {
+      width: 34,
+      height: 34,
+      borderRadius: 7,
+    },
+    thumbPlaceholder: {
+      backgroundColor: colors.surfaceSoft,
     },
     selectedBadge: {
       marginTop: 8,
@@ -1076,6 +1133,7 @@ function createStyles(colors, topInset, bottomInset) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: 10,
       paddingVertical: 6,
     },
     stepper: {
