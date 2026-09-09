@@ -38,6 +38,21 @@ export function mapOrderForTable(order) {
     fulfilmentStatus: order.fulfilmentStatus,
     paymentMethod: order.paymentMethod ?? "cod",
     privateNote: order.privateNote ?? "",
+    paymentPending: order.paymentStatus === "pending-payment",
+    // Every slip recorded against this order, newest last. A customer paying
+    // in two transfers leaves two, and the seller may need either later.
+    paymentReceipts: order.paymentReceipts ?? [],
+    totalAmountMinor: order.totalAmountMinor ?? 0,
+    // Grams below a kilo, kilograms above: couriers price by the kilo, and
+    // "1250 g" makes the seller do the conversion at the counter.
+    totalWeightGrams: order.totalWeightGrams ?? 0,
+    totalWeight:
+      (order.totalWeightGrams ?? 0) >= 1000
+        ? `${((order.totalWeightGrams ?? 0) / 1000).toFixed(2)} kg`
+        : `${order.totalWeightGrams ?? 0} g`,
+    // The customer's own instruction, kept separate from the seller's private
+    // note so the two are never shown as one another's words.
+    customerNote: order.customerNote ?? "",
     fraudWarning,
     totalMinor: order.totalAmountMinor ?? 0,
     subtotalMinor: order.subtotalMinor ?? 0,
@@ -86,6 +101,8 @@ export function mapOrderForTable(order) {
       unitPrice: formatCurrency(item.unitPriceMinor),
       price: formatCurrency(item.lineTotalMinor),
       imageUrl: item.mediaUrl ?? item.imageUrl ?? "",
+      warrantyPeriodMonths: item.warrantyPeriodMonths ?? item.warrantyMonths ?? 0,
+      warrantyExpiresAt: item.warrantyExpiresAt ?? null,
     })),
   };
 }
@@ -116,6 +133,14 @@ export async function createOrder(businessId, orderData) {
     method: "POST",
     body: orderData,
   });
+  return mapOrderForTable(response.order);
+}
+
+export async function recordOrderPayment(businessId, orderId, payment) {
+  const response = await apiRequest(
+    `/businesses/${businessId}/orders/${orderId}/payment`,
+    { method: "PATCH", body: payment },
+  );
   return mapOrderForTable(response.order);
 }
 

@@ -1,17 +1,23 @@
 import { Image } from "expo-image";
 import {
+  BadgeDollarSign,
   CircleAlert,
   Flag,
   MapPin,
+  MessageCircle,
   Package,
   Phone,
   Printer,
+  Share2,
+  StickyNote,
   User,
 } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +28,9 @@ import {
 import { STATUS_LABELS, STATUS_TRANSITIONS } from "../../constants/orderStatus";
 import { useAppTheme } from "../../context/ThemeContext";
 import { shareWaybillPdf } from "../../services/fileService";
+import PaymentBadge from "./PaymentBadge";
 import PromptModal from "./PromptModal";
+import RecordPaymentModal from "./RecordPaymentModal";
 
 // Statuses that release reserved stock, so they always confirm first.
 const DESTRUCTIVE_STATUSES = new Set(["cancelled", "returned"]);
@@ -44,14 +52,16 @@ export default function OrderDetailsPanel({
   onFraudReport,
   onCourierIssue,
   onWaybillSave,
+  onRecordPayment,
 }) {
-  const { colors } = useAppTheme();
-  const styles = createStyles(colors);
+  const { colors, theme } = useAppTheme();
+  const styles = createStyles(colors, theme);
 
   const [actionError, setActionError] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [waybillNumber, setWaybillNumber] = useState(order.waybillNumber ?? "");
   const [activePrompt, setActivePrompt] = useState(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   useEffect(() => {
     setWaybillNumber(order.waybillNumber ?? "");
@@ -69,6 +79,26 @@ export default function OrderDetailsPanel({
       ];
 
   const nextStatuses = STATUS_TRANSITIONS[order.fulfilmentStatus] ?? [];
+  const note = order.privateNote || order.note;
+
+  function handleCall(number) {
+    if (!number) return;
+    Linking.openURL(`tel:${number}`).catch(() => {
+      Alert.alert("Error", "Could not open dialer.");
+    });
+  }
+
+  function handleWhatsApp(number) {
+    if (!number) return;
+    const clean = String(number).replace(/[^0-9]/g, "");
+    const intl = clean.startsWith("0") ? `94${clean.slice(1)}` : clean;
+    const msg = encodeURIComponent(
+      `Hello ${order.customerName}, regarding your order #${order.orderNumber} from Vendly.`,
+    );
+    Linking.openURL(`https://wa.me/${intl}?text=${msg}`).catch(() => {
+      Alert.alert("Error", "Could not open WhatsApp.");
+    });
+  }
 
   async function runAction(action) {
     setActionError("");
@@ -151,7 +181,17 @@ export default function OrderDetailsPanel({
         </View>
       )}
 
+      {/* Meta Information */}
       <View style={styles.metaRow}>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Payment</Text>
+          <PaymentBadge
+            paymentMethod={order.paymentMethod}
+            paymentStatus={order.paymentStatus}
+            depositAmount={order.deposit}
+            paidAmountMinor={order.paidAmountMinor}
+          />
+        </View>
         <View style={styles.metaItem}>
           <Text style={styles.metaLabel}>Courier</Text>
           <Text style={styles.metaValue}>{order.courier || "Not assigned"}</Text>
@@ -169,6 +209,28 @@ export default function OrderDetailsPanel({
           </Text>
         </View>
       </View>
+
+      {/* Private Note Container */}
+      {note ? (
+        <View style={styles.noteBox}>
+          <StickyNote size={16} color={theme === "dark" ? "#fcd34d" : "#92400e"} />
+          <View style={styles.noteContent}>
+            <Text style={styles.noteLabel}>Private Note</Text>
+            <Text style={styles.noteText}>{note}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Customer Note / Public Note */}
+      {order.customerNote ? (
+        <View style={[styles.noteBox, styles.customerNoteBox]}>
+          <User size={16} color={theme === "dark" ? "#93c5fd" : "#1d4ed8"} />
+          <View style={styles.noteContent}>
+            <Text style={[styles.noteLabel, styles.customerNoteLabel]}>Customer Note</Text>
+            <Text style={styles.noteText}>{order.customerNote}</Text>
+          </View>
+        </View>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Items in this order</Text>
       <View style={styles.itemsList}>
@@ -189,6 +251,15 @@ export default function OrderDetailsPanel({
               <Text style={styles.itemMeta}>
                 Qty: {item.quantity} × {item.unitPrice ?? item.price}
               </Text>
+              {item.warrantyPeriodMonths > 0 && (
+                <Text style={styles.itemWarranty}>
+                  Warranty: {item.warrantyPeriodMonths} month
+                  {item.warrantyPeriodMonths === 1 ? "" : "s"}
+                  {item.warrantyExpiresAt
+                    ? ` · expires ${new Date(item.warrantyExpiresAt).toLocaleDateString("en-LK")}`
+                    : ""}
+                </Text>
+              )}
             </View>
 
             <Text style={styles.itemPrice}>{item.price}</Text>
@@ -196,22 +267,65 @@ export default function OrderDetailsPanel({
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Delivery address</Text>
+      <Text style={styles.sectionTitle}>Delivery address & Contact</Text>
       <View style={styles.infoList}>
         <View style={styles.infoRow}>
           <User size={16} color={colors.muted} />
           <Text style={styles.infoText}>{order.customerName}</Text>
         </View>
-        <View style={styles.infoRow}>
-          <Phone size={16} color={colors.muted} />
-          <Text style={styles.infoText}>{order.phoneNumber}</Text>
-        </View>
-        {order.secondaryPhoneNumber ? (
-          <View style={styles.infoRow}>
+
+        <View style={styles.infoRowWithActions}>
+          <View style={styles.infoRowMain}>
             <Phone size={16} color={colors.muted} />
-            <Text style={styles.infoText}>{order.secondaryPhoneNumber}</Text>
+            <Text style={styles.infoText}>{order.phoneNumber}</Text>
+          </View>
+          <View style={styles.contactActions}>
+            <TouchableOpacity
+              style={styles.contactButton}
+              onPress={() => handleCall(order.phoneNumber)}
+              hitSlop={6}
+            >
+              <Phone size={13} color={colors.accent} />
+              <Text style={styles.contactButtonText}>Call</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.contactButton, styles.whatsappButton]}
+              onPress={() => handleWhatsApp(order.phoneNumber)}
+              hitSlop={6}
+            >
+              <MessageCircle size={13} color="#25D366" />
+              <Text style={[styles.contactButtonText, { color: "#25D366" }]}>WhatsApp</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {order.secondaryPhoneNumber ? (
+          <View style={styles.infoRowWithActions}>
+            <View style={styles.infoRowMain}>
+              <Phone size={16} color={colors.muted} />
+              <Text style={styles.infoText}>{order.secondaryPhoneNumber}</Text>
+            </View>
+            <View style={styles.contactActions}>
+              <TouchableOpacity
+                style={styles.contactButton}
+                onPress={() => handleCall(order.secondaryPhoneNumber)}
+                hitSlop={6}
+              >
+                <Phone size={13} color={colors.accent} />
+                <Text style={styles.contactButtonText}>Call</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.contactButton, styles.whatsappButton]}
+                onPress={() => handleWhatsApp(order.secondaryPhoneNumber)}
+                hitSlop={6}
+              >
+                <MessageCircle size={13} color="#25D366" />
+                <Text style={[styles.contactButtonText, { color: "#25D366" }]}>WhatsApp</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
+
         <View style={styles.infoRow}>
           <MapPin size={16} color={colors.muted} />
           <Text style={styles.infoText}>
@@ -239,13 +353,19 @@ export default function OrderDetailsPanel({
             {order.deliveryFee ?? "Not calculated"}
           </Text>
         </View>
+
+        {order.totalWeightGrams > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Total weight</Text>
+            <Text style={styles.summaryValue}>{order.totalWeight}</Text>
+          </View>
+        )}
         <View style={[styles.summaryRow, styles.summaryTotalRow]}>
           <Text style={styles.summaryTotalLabel}>Total</Text>
           <Text style={styles.summaryTotalValue}>{order.total}</Text>
         </View>
 
-        {/* Anything already paid is deducted, so the courier only collects
-            the remaining balance. */}
+        {/* Paid and balance due deductions */}
         {order.paidAmountMinor > 0 && (
           <>
             <View style={styles.summaryRow}>
@@ -284,6 +404,36 @@ export default function OrderDetailsPanel({
         </TouchableOpacity>
       </View>
 
+      {/* Proof of payment, kept on the order so the seller can check it long
+          after the chat has scrolled away. */}
+      {(order.paymentReceipts ?? []).length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Payment receipts</Text>
+          <View style={styles.receiptsGrid}>
+            {(order.paymentReceipts ?? []).map((receipt) => (
+              <TouchableOpacity
+                key={receipt.url}
+                style={styles.receiptCard}
+                onPress={() => {
+                  if (receipt.url) Linking.openURL(receipt.url).catch(() => {});
+                }}
+              >
+                {receipt.url ? (
+                  <Image source={{ uri: receipt.url }} style={styles.receiptImage} contentFit="cover" />
+                ) : (
+                  <View style={[styles.receiptImage, styles.receiptImagePlaceholder]}>
+                    <BadgeDollarSign size={16} color={colors.subtle} />
+                  </View>
+                )}
+                <Text style={styles.receiptAmount}>
+                  LKR {((receipt.amountMinor ?? 0) / 100).toLocaleString("en-LK")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+
       <Text style={styles.sectionTitle}>Order actions</Text>
 
       {nextStatuses.length > 0 ? (
@@ -312,6 +462,37 @@ export default function OrderDetailsPanel({
       >
         <Printer size={16} color={colors.text} />
         <Text style={styles.actionButtonText}>Waybill PDF</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.actionButton, styles.paymentButton]}
+        onPress={() => setIsPaymentModalOpen(true)}
+        disabled={isWorking}
+      >
+        <BadgeDollarSign size={16} color="#059669" />
+        <Text style={[styles.actionButtonText, { color: "#059669" }]}>Record payment</Text>
+      </TouchableOpacity>
+
+      {order.paymentPending && (
+        <View style={styles.paymentHold}>
+          <Text style={styles.paymentHoldText}>
+            This order is waiting on a bank transfer. Record the payment, or change it to
+            cash on delivery, before confirming it.
+          </Text>
+        </View>
+      )}
+
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => {
+          Share.share({
+            message: `Order #${order.orderNumber}\nCustomer: ${order.customerName}\nPhone: ${order.phoneNumber}\nTotal: ${order.total}\nStatus: ${readableStatus(order.status || order.fulfilmentStatus)}\nAddress: ${order.deliveryAddress || "N/A"}`,
+          });
+        }}
+        disabled={isWorking}
+      >
+        <Share2 size={16} color={colors.text} />
+        <Text style={styles.actionButtonText}>Share Order Summary</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -346,9 +527,9 @@ export default function OrderDetailsPanel({
         confirmLabel="Report"
         isDanger
         onCancel={() => setActivePrompt(null)}
-        onConfirm={(note) => {
+        onConfirm={(noteText) => {
           setActivePrompt(null);
-          runAction(() => onFraudReport?.(order.id, note));
+          runAction(() => onFraudReport?.(order.id, noteText));
         }}
       />
 
@@ -359,16 +540,27 @@ export default function OrderDetailsPanel({
         defaultValue="Delivery was affected by a courier branch problem."
         confirmLabel="Report"
         onCancel={() => setActivePrompt(null)}
-        onConfirm={(note) => {
+        onConfirm={(noteText) => {
           setActivePrompt(null);
-          runAction(() => onCourierIssue?.(order.id, note));
+          runAction(() => onCourierIssue?.(order.id, noteText));
+        }}
+      />
+
+      <RecordPaymentModal
+        order={order}
+        visible={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onSubmit={async (payment) => {
+          await onRecordPayment?.(order.id, payment);
         }}
       />
     </View>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, theme) {
+  const isDark = theme === "dark";
+
   return StyleSheet.create({
     panel: {
       borderTopWidth: 1,
@@ -413,7 +605,8 @@ function createStyles(colors) {
     },
     metaItem: {
       flexGrow: 1,
-      minWidth: 90,
+      minWidth: 80,
+      gap: 3,
     },
     metaLabel: {
       color: colors.subtle,
@@ -424,6 +617,34 @@ function createStyles(colors) {
       color: colors.text,
       fontSize: 13,
       fontWeight: "600",
+    },
+    noteBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      backgroundColor: isDark ? "rgba(245, 158, 11, 0.12)" : "#fffbf0",
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(245, 158, 11, 0.25)" : "#fce7b0",
+      borderRadius: 10,
+      padding: 12,
+      marginTop: 8,
+      marginBottom: 6,
+    },
+    noteContent: {
+      flex: 1,
+      gap: 2,
+    },
+    noteLabel: {
+      color: isDark ? "#fcd34d" : "#92400e",
+      fontSize: 11,
+      fontWeight: "750",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    noteText: {
+      color: colors.text,
+      fontSize: 12.5,
+      lineHeight: 17,
     },
     sectionTitle: {
       color: colors.textStrong,
@@ -462,6 +683,11 @@ function createStyles(colors) {
       color: colors.muted,
       fontSize: 12,
     },
+    itemWarranty: {
+      color: colors.muted,
+      fontSize: 11,
+      marginTop: 1,
+    },
     itemPrice: {
       color: colors.textStrong,
       fontSize: 13,
@@ -472,8 +698,45 @@ function createStyles(colors) {
     },
     infoRow: {
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       gap: 8,
+    },
+    infoRowWithActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    infoRowMain: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      flex: 1,
+    },
+    contactActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    contactButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: colors.surfaceSoft,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    whatsappButton: {
+      borderColor: "rgba(37, 211, 102, 0.3)",
+      backgroundColor: isDark ? "rgba(37, 211, 102, 0.12)" : "#eafaf1",
+    },
+    contactButtonText: {
+      color: colors.accent,
+      fontSize: 11,
+      fontWeight: "700",
     },
     infoText: {
       flex: 1,
@@ -546,6 +809,48 @@ function createStyles(colors) {
       fontWeight: "700",
       fontSize: 13,
     },
+    receiptsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    receiptCard: {
+      width: 110,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: "hidden",
+    },
+    receiptImage: {
+      width: "100%",
+      height: 78,
+      backgroundColor: colors.surfaceSoft,
+    },
+    receiptImagePlaceholder: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    receiptAmount: {
+      color: colors.textStrong,
+      fontSize: 12,
+      fontWeight: "700",
+      padding: 8,
+      paddingTop: 6,
+    },
+    paymentHold: {
+      marginTop: 10,
+      backgroundColor: isDark ? "rgba(245, 158, 11, 0.12)" : "#fffbf0",
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(245, 158, 11, 0.25)" : "#fce7b0",
+      borderRadius: 10,
+      padding: 12,
+    },
+    paymentHoldText: {
+      color: isDark ? "#fcd34d" : "#92400e",
+      fontSize: 12.5,
+      lineHeight: 17,
+    },
     statusButtons: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -590,6 +895,17 @@ function createStyles(colors) {
     },
     dangerButtonText: {
       color: colors.danger,
+    },
+    paymentButton: {
+      borderColor: isDark ? "rgba(5, 150, 105, 0.4)" : "#a7f3d0",
+      backgroundColor: isDark ? "rgba(5, 150, 105, 0.1)" : "#f0fdf4",
+    },
+    customerNoteBox: {
+      backgroundColor: isDark ? "rgba(59, 130, 246, 0.12)" : "#eff6ff",
+      borderColor: isDark ? "rgba(59, 130, 246, 0.3)" : "#bfdbfe",
+    },
+    customerNoteLabel: {
+      color: isDark ? "#93c5fd" : "#1d4ed8",
     },
     loader: {
       marginTop: 12,
