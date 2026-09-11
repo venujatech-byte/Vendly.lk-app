@@ -23,6 +23,7 @@ import {
 } from "@/services/operationService";
 import {
   getOrder,
+  recordOrderPayment,
   removeOrder,
   updateOrder,
   updateOrderStatus,
@@ -81,6 +82,9 @@ export default function OrderDetailScreen() {
     onCourierIssue: async (orderId, note) => {
       await reportCourierIssue(business.id, orderId, "branch-problem", note);
     },
+    onRecordPayment: async (orderId, payment) => {
+      setOrder(await recordOrderPayment(business.id, orderId, payment));
+    },
   };
 
   if (isLoading) {
@@ -137,6 +141,7 @@ export default function OrderDetailScreen() {
 
       <OrderActionsMenu
         order={isActionsOpen ? order : null}
+        businessId={business?.id}
         onClose={() => setIsActionsOpen(false)}
         {...detailHandlers}
         onRemove={async (orderId) => {
