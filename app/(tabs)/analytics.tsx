@@ -341,7 +341,7 @@ export default function AnalyticsTab() {
         {/* Work Centre */}
         {workCentreItems.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Today's Work Centre</Text>
+            <Text style={styles.sectionTitle}>Today&apos;s Work Centre</Text>
 
             <View style={styles.workGrid}>
               {workCentreItems.map((item) => (

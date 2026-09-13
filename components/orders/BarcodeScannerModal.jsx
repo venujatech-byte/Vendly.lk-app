@@ -22,6 +22,17 @@ try {
   CameraModule = null;
 }
 
+// Custom hook to safely use camera permissions without conditional hook calls
+function useCameraPermissionsSafe() {
+  // Always call a hook at top level to satisfy rules-of-hooks
+  // When CameraModule is available, use its hook; otherwise use a mock that returns [null, null]
+  const useMockPermissions = () => [null, null];
+  const hookToCall = CameraModule?.useCameraPermissions ?? useMockPermissions;
+  const [permission, requestPermission] = hookToCall();
+  
+  return [permission, requestPermission];
+}
+
 const BARCODE_TYPES = [
   "qr",
   "code128",
@@ -43,9 +54,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScanned }) {
   const styles = createStyles(colors, insets.top, insets.bottom);
 
   const isCameraAvailable = Boolean(CameraModule?.CameraView);
-  const [permission, requestPermission] = CameraModule?.useCameraPermissions
-    ? CameraModule.useCameraPermissions()
-    : [null, null];
+  const [permission, requestPermission] = useCameraPermissionsSafe();
   const [hasScanned, setHasScanned] = useState(false);
 
   useEffect(() => {
