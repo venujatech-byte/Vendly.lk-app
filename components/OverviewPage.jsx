@@ -18,6 +18,7 @@ import {
   Truck,
   Undo2,
   Users,
+  MessageSquare,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -339,6 +340,15 @@ export default function OverviewPage() {
                 <TouchableOpacity
                   style={styles.heroActionChip}
                   activeOpacity={0.8}
+                  onPress={() => router.push("/messages")}
+                >
+                  <MessageSquare size={14} color={colors.accent} />
+                  <Text style={styles.heroChipText}>Messages</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.heroActionChip}
+                  activeOpacity={0.8}
                   onPress={() => router.push("/add-order")}
                 >
                   <Plus size={14} color={colors.accent} />
@@ -473,7 +483,7 @@ export default function OverviewPage() {
             <TouchableOpacity
               style={[styles.workItem, styles.workItemRed]}
               activeOpacity={0.75}
-              onPress={() => router.push("/orders")}
+              onPress={() => router.push("/messages")}
             >
               <View style={[styles.workIcon, styles.workIconRed]}>
                 <Bell size={18} color="#ef4444" />

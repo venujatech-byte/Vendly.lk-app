@@ -5,7 +5,9 @@ import {
   Clock3,
   Plus,
   RotateCcw,
+  Search,
   Truck,
+  X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -16,6 +18,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -66,6 +69,8 @@ export default function CouriersTab() {
   const [expandedCourierId, setExpandedCourierId] = useState(null);
   const [waybillCourier, setWaybillCourier] = useState(null);
   const [uploadingTemplateId, setUploadingTemplateId] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // "all" | "active" | "inactive"
 
   const loadCouriers = useCallback(
     async (refreshing = false) => {
@@ -106,6 +111,22 @@ export default function CouriersTab() {
       return 0;
     });
   }, [couriers, sort]);
+
+  const filteredCouriers = useMemo(() => {
+    return sortedCouriers.filter((courier) => {
+      if (statusFilter === "active" && courier.status !== "active") return false;
+      if (statusFilter === "inactive" && courier.status === "active") return false;
+
+      if (searchText.trim()) {
+        const query = searchText.toLowerCase().trim();
+        const matchesName = String(courier.name || "").toLowerCase().includes(query);
+        const matchesCode = String(courier.code || "").toLowerCase().includes(query);
+        if (!matchesName && !matchesCode) return false;
+      }
+
+      return true;
+    });
+  }, [sortedCouriers, statusFilter, searchText]);
 
   const isSortActive =
     sort.field !== DEFAULT_COURIER_SORT.field ||
@@ -294,9 +315,50 @@ export default function CouriersTab() {
         </ScrollView>
       </View>
 
+      {/* Search & Filter Row */}
+      <View style={styles.searchFilterContainer}>
+        <View style={styles.searchBox}>
+          <Search size={15} color={colors.subtle} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search courier name, code..."
+            placeholderTextColor={colors.subtle}
+          />
+          {searchText ? (
+            <TouchableOpacity onPress={() => setSearchText("")} hitSlop={8}>
+              <X size={14} color={colors.subtle} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={styles.filterChipsRow}>
+          {["all", "active", "inactive"].map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[
+                styles.chip,
+                statusFilter === f && styles.chipActive,
+              ]}
+              onPress={() => setStatusFilter(f)}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  statusFilter === f && styles.chipTextActive,
+                ]}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       <View style={styles.toolbar}>
         <Text style={styles.sectionTitle}>
-          Couriers ({couriers.length})
+          Couriers ({filteredCouriers.length})
         </Text>
         <TouchableOpacity
           style={[styles.sortButton, isSortActive && styles.sortButtonActive]}
@@ -320,7 +382,7 @@ export default function CouriersTab() {
       ) : (
         <FlatList
           style={styles.list}
-          data={sortedCouriers}
+          data={filteredCouriers}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -333,29 +395,39 @@ export default function CouriersTab() {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No couriers configured yet</Text>
+              <Text style={styles.emptyTitle}>
+                {searchText || statusFilter !== "all"
+                  ? "No matching couriers found"
+                  : "No couriers configured yet"}
+              </Text>
               <Text style={styles.emptyText}>
-                Add a courier with per-district first-kilogram pricing to start
-                quoting delivery to customers.
+                {searchText || statusFilter !== "all"
+                  ? "Try adjusting your search query or status filter."
+                  : "Add a courier with per-district first-kilogram pricing to start quoting delivery to customers."}
               </Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => {
-                  setEditingCourier(null);
-                  setIsAddOpen(true);
-                }}
-              >
-                <Plus size={14} color="#ffffff" />
-                <Text style={styles.emptyButtonText}>Add Courier</Text>
-              </TouchableOpacity>
+              {searchText || statusFilter !== "all" ? (
+                <TouchableOpacity
+                  style={[styles.emptyButton, { backgroundColor: colors.surfaceSoft, borderWidth: 1, borderColor: colors.border }]}
+                  onPress={() => {
+                    setSearchText("");
+                    setStatusFilter("all");
+                  }}
+                >
+                  <Text style={[styles.emptyButtonText, { color: colors.accent }]}>Clear Filters</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => {
+                    setEditingCourier(null);
+                    setIsAddOpen(true);
+                  }}
+                >
+                  <Plus size={14} color="#ffffff" />
+                  <Text style={styles.emptyButtonText}>Add Courier</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          }
-          ListFooterComponent={
-            sortedCouriers.length > 0 ? (
-              <Text style={styles.footerText}>
-                Showing {sortedCouriers.length} of {couriers.length} couriers
-              </Text>
-            ) : null
           }
           renderItem={({ item }) => (
             <CourierCard
@@ -376,6 +448,11 @@ export default function CouriersTab() {
               onChangeStatus={() => confirmStatusChange(item)}
             />
           )}
+          ListFooterComponent={
+            <Text style={styles.footerText}>
+              Showing {filteredCouriers.length} of {couriers.length} courier(s)
+            </Text>
+          }
         />
       )}
 
@@ -556,6 +633,54 @@ function createStyles(colors) {
       fontSize: 12,
       textAlign: "center",
       paddingVertical: 14,
+    },
+    searchFilterContainer: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      gap: 8,
+    },
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      height: 40,
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.textStrong,
+      fontSize: 13,
+      paddingVertical: 0,
+    },
+    filterChipsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    chip: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    chipActive: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    chipText: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    chipTextActive: {
+      color: "#ffffff",
+      fontWeight: "700",
     },
   });
 }

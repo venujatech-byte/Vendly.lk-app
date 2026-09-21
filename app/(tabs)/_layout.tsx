@@ -4,6 +4,7 @@ import {
   ChartNoAxesCombined,
   ClipboardList,
   LayoutDashboard,
+  MessageSquare,
   Truck,
   Users,
 } from 'lucide-react-native';
@@ -49,6 +50,13 @@ export default function TabLayout() {
         options={{
           title: 'Customers',
           tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Messages',
+          tabBarIcon: ({ color, size }) => <MessageSquare color={color} size={size} />,
         }}
       />
       <Tabs.Screen

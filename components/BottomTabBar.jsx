@@ -94,15 +94,18 @@ function createStyles(colors, bottomInset) {
     bar: {
       height: 64 + bottomInset,
       paddingBottom: bottomInset,
-      paddingHorizontal: 4,
+      paddingHorizontal: 6,
       paddingTop: 6,
       borderTopWidth: 1,
-      borderTopColor: "rgba(255,255,255,0.16)",
+      borderTopColor: "rgba(255,255,255,0.12)",
     },
     navigation: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
+      maxWidth: 680,
+      alignSelf: "center",
+      width: "100%",
     },
     tab: {
       flex: 1,
@@ -116,11 +119,13 @@ function createStyles(colors, bottomInset) {
       justifyContent: "center",
       gap: 3,
       borderRadius: 10,
+      paddingVertical: 2,
     },
     label: {
-      color: "#ffffff",
-      fontSize: 9,
-      lineHeight: 11,
+      color: "rgba(255,255,255,0.85)",
+      fontSize: 9.5,
+      lineHeight: 12,
+      fontWeight: "600",
       textAlign: "center",
     },
   });

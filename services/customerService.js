@@ -3,7 +3,7 @@ import { apiRequest } from "./apiClient";
 export async function getCustomers(businessId, search = "") {
   const query = search ? `?search=${encodeURIComponent(search)}` : "";
   const response = await apiRequest(`/businesses/${businessId}/customers${query}`);
-  return response.customers;
+  return response.customers ?? [];
 }
 
 export async function createCustomer(businessId, customerData) {
@@ -20,4 +20,40 @@ export async function updateCustomer(businessId, customerId, changes) {
     { method: "PATCH", body: changes },
   );
   return response.customer;
+}
+
+export async function getFraudCustomers(businessId) {
+  const response = await apiRequest(
+    `/businesses/${businessId}/fraud-customers`,
+  );
+  return response.customers ?? [];
+}
+
+export async function changeFraudRiskLevel(businessId, customerId, riskLevel) {
+  const response = await apiRequest(
+    `/businesses/${businessId}/customers/${customerId}/fraud-risk`,
+    { method: "PATCH", body: { riskLevel } },
+  );
+  return response.customer;
+}
+
+export async function reportCustomer(businessId, customerId, note = "") {
+  const response = await apiRequest(
+    `/businesses/${businessId}/customers/${customerId}/fraud-report`,
+    {
+      method: "POST",
+      body: {
+        reason: "seller-reported",
+        note: note || "Customer reported from the mobile app.",
+      },
+    },
+  );
+  return response.fraudReport;
+}
+
+export async function removeFromFraudList(businessId, customerId) {
+  return apiRequest(
+    `/businesses/${businessId}/customers/${customerId}/fraud-profile`,
+    { method: "DELETE" },
+  );
 }

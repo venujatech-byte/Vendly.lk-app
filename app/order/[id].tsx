@@ -1,6 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, MoreVertical } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  FileText,
+  MessageCircle,
+  MoreVertical,
+  Printer,
+  Share2,
+} from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,8 +18,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import CustomerWhatsAppModal from "@/components/orders/CustomerWhatsAppModal";
 import OrderActionsMenu from "@/components/orders/OrderActionsMenu";
 import OrderDetailsPanel from "@/components/orders/OrderDetailsPanel";
+import OrderReceiptModal from "@/components/orders/OrderReceiptModal";
 import StatusPill from "@/components/orders/StatusPill";
 import { useAuth } from "@/context/authContextValue";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -33,13 +42,18 @@ export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => createStyles(colors, insets.top), [colors, insets.top]);
+  const styles = useMemo(
+    () => createStyles(colors, insets.top),
+    [colors, insets.top],
+  );
   const { business } = useAuth();
 
   const [order, setOrder] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
 
   const loadOrder = useCallback(async () => {
     if (!business?.id || !id) return;
@@ -75,7 +89,10 @@ export default function OrderDetailScreen() {
       await reportFraudOrder(business.id, orderId, "fake-details", note);
       setOrder((current) =>
         current
-          ? { ...current, fraudReport: { status: "active", reason: "fake-details" } }
+          ? {
+              ...current,
+              fraudReport: { status: "active", reason: "fake-details" },
+            }
           : current,
       );
     },
@@ -109,7 +126,10 @@ export default function OrderDetailScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
           <ArrowLeft size={20} color={colors.text} />
         </TouchableOpacity>
 
@@ -125,6 +145,24 @@ export default function OrderDetailScreen() {
         </View>
 
         <StatusPill status={order.status} />
+
+        {/* Quick Receipt Action */}
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setIsReceiptOpen(true)}
+          title="Print / Share Receipt"
+        >
+          <FileText size={18} color={colors.text} />
+        </TouchableOpacity>
+
+        {/* Quick WhatsApp Action */}
+        <TouchableOpacity
+          style={[styles.iconButton, { backgroundColor: "#ecfdf5" }]}
+          onPress={() => setIsWhatsAppOpen(true)}
+          title="Send WhatsApp update"
+        >
+          <MessageCircle size={18} color="#10b981" />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.moreButton}
@@ -148,6 +186,20 @@ export default function OrderDetailScreen() {
           await removeOrder(business.id, orderId);
           router.back();
         }}
+      />
+
+      <OrderReceiptModal
+        visible={isReceiptOpen}
+        onClose={() => setIsReceiptOpen(false)}
+        business={business}
+        order={order}
+      />
+
+      <CustomerWhatsAppModal
+        visible={isWhatsAppOpen}
+        onClose={() => setIsWhatsAppOpen(false)}
+        order={order}
+        business={business}
       />
     </View>
   );
@@ -177,10 +229,10 @@ function createStyles(colors, topInset) {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 16,
-      paddingTop: 14 + topInset,
-      paddingBottom: 14,
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingTop: 12 + topInset,
+      paddingBottom: 12,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
@@ -190,6 +242,14 @@ function createStyles(colors, topInset) {
       height: 32,
       alignItems: "center",
       justifyContent: "center",
+    },
+    iconButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceSoft,
     },
     moreButton: {
       width: 28,
@@ -203,7 +263,7 @@ function createStyles(colors, topInset) {
     headerTitle: {
       color: colors.textStrong,
       fontWeight: "700",
-      fontSize: 16,
+      fontSize: 15,
     },
     headerWaybill: {
       color: colors.subtle,

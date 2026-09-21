@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
 import { getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
+import { getDatabase } from "firebase/database";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { Platform } from "react-native";
 
 const firebaseConfig = {
@@ -10,6 +13,9 @@ const firebaseConfig = {
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  databaseURL:
+    process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL ||
+    "https://vendly-lk-default-rtdb.asia-southeast1.firebasedatabase.app",
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -23,4 +29,11 @@ const auth =
         persistence: getReactNativePersistence(AsyncStorage),
       });
 
-export { auth, firebaseApp };
+const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp);
+const rtdb = getDatabase(
+  firebaseApp,
+  firebaseConfig.databaseURL,
+);
+
+export { auth, db, firebaseApp, rtdb, storage };

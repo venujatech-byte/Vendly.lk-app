@@ -1,263 +1,193 @@
-import { StyleSheet, View } from "react-native";
-import Svg, { Path, Rect, Text, Line, Circle } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
 
-export function BarChart({ data, width = 320, height = 200, color = "#168cf5", maxValue }) {
-  const max = maxValue ?? Math.max(...data.map((d) => d.value), 1);
-  const barWidth = width / data.length * 0.6;
-  const spacing = width / data.length;
-  const bottomPadding = 24;
-  const leftPadding = 40;
-  const topPadding = 8;
-  const chartHeight = height - bottomPadding - topPadding;
+export function BarChart({
+  data = [],
+  height = 180,
+  color = "#168cf5",
+  maxValue,
+}) {
+  if (!data || data.length === 0) return null;
+
+  const max = maxValue ?? Math.max(...data.map((d) => d.value || 0), 1);
 
   return (
-    <View style={{ width, height }}>
-      <Svg width={width} height={height}>
-        {/* Y axis */}
-        <Line
-          x1={leftPadding}
-          y1={topPadding}
-          x2={leftPadding}
-          y2={height - bottomPadding}
-          stroke="#cbd5e1"
-          strokeWidth={1}
-        />
-        {/* X axis */}
-        <Line
-          x1={leftPadding}
-          y1={height - bottomPadding}
-          x2={width - 8}
-          y2={height - bottomPadding}
-          stroke="#cbd5e1"
-          strokeWidth={1}
-        />
-
-        {/* Y axis labels (3 lines) */}
-        {[0, 0.5, 1].map((ratio) => (
-          <Text
-            key={ratio}
-            x={leftPadding - 8}
-            y={topPadding + chartHeight * (1 - ratio)}
-            textAnchor="end"
-            dominantBaseline="middle"
-            fontSize={10}
-            fill="#64748b"
-          >
-            {Math.round(max * ratio).toLocaleString()}
-          </Text>
+    <View style={[styles.barChartContainer, { height }]}>
+      {/* Background grid lines */}
+      <View style={styles.gridLinesContainer}>
+        {[1, 0.5, 0].map((ratio) => (
+          <View key={ratio} style={styles.gridLineRow}>
+            <Text style={styles.gridLabel}>
+              {Math.round(max * ratio).toLocaleString()}
+            </Text>
+            <View style={styles.gridLine} />
+          </View>
         ))}
+      </View>
 
-        {/* Bars */}
+      {/* Bars row */}
+      <View style={styles.barsRow}>
         {data.map((item, index) => {
-          const barHeight = (item.value / max) * chartHeight;
-          const x = leftPadding + index * spacing + (spacing - barWidth) / 2;
-          const y = height - bottomPadding - barHeight;
+          const percentage = Math.min(
+            Math.max(((item.value || 0) / max) * 100, 4),
+            100,
+          );
 
           return (
-            <View key={item.label}>
-              <Rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={barHeight}
-                fill={color}
-                rx={2}
-              />
-              <Text
-                x={x + barWidth / 2}
-                y={height - bottomPadding + 16}
-                textAnchor="middle"
-                fontSize={9}
-                fill="#64748b"
-              >
+            <View key={`${item.label}-${index}`} style={styles.barColumn}>
+              <View style={styles.barTrack}>
+                <View
+                  style={[
+                    styles.barFill,
+                    {
+                      height: `${percentage}%`,
+                      backgroundColor: item.color || color,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.barLabel} numberOfLines={1}>
                 {item.label}
               </Text>
             </View>
           );
         })}
-      </Svg>
+      </View>
     </View>
   );
 }
 
-export function LineChart({ data, width = 320, height = 200, color = "#168cf5", maxValue }) {
-  const max = maxValue ?? Math.max(...data.map((d) => d.value), 1);
-  const min = Math.min(...data.map((d) => d.value), 0);
-  const range = max - min || 1;
-  const leftPadding = 40;
-  const bottomPadding = 24;
-  const topPadding = 8;
-  const rightPadding = 8;
-  const chartWidth = width - leftPadding - rightPadding;
-  const chartHeight = height - bottomPadding - topPadding;
+export function LineChart({
+  data = [],
+  height = 200,
+  color = "#168cf5",
+  maxValue,
+}) {
+  if (!data || data.length === 0) return null;
 
-  const points = data.map((item, index) => {
-    const x = leftPadding + (index / (data.length - 1 || 1)) * chartWidth;
-    const y = topPadding + chartHeight - ((item.value - min) / range) * chartHeight;
-    return { x, y };
-  });
-
-  const pathData = points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-    .join(" ");
+  const max = maxValue ?? Math.max(...data.map((d) => d.value || 0), 1);
+  const min = Math.min(...data.map((d) => d.value || 0), 0);
 
   return (
-    <View style={{ width, height }}>
-      <Svg width={width} height={height}>
-        {/* Y axis */}
-        <Line
-          x1={leftPadding}
-          y1={topPadding}
-          x2={leftPadding}
-          y2={height - bottomPadding}
-          stroke="#cbd5e1"
-          strokeWidth={1}
-        />
-        {/* X axis */}
-        <Line
-          x1={leftPadding}
-          y1={height - bottomPadding}
-          x2={width - rightPadding}
-          y2={height - bottomPadding}
-          stroke="#cbd5e1"
-          strokeWidth={1}
-        />
-
-        {/* Y axis labels */}
-        {[0, 0.5, 1].map((ratio) => (
-          <Text
-            key={ratio}
-            x={leftPadding - 8}
-            y={topPadding + chartHeight * (1 - ratio)}
-            textAnchor="end"
-            dominantBaseline="middle"
-            fontSize={10}
-            fill="#64748b"
-          >
-            {Math.round(min + range * ratio).toLocaleString()}
-          </Text>
-        ))}
-
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map((ratio) => (
-          <Line
-            key={ratio}
-            x1={leftPadding}
-            y1={topPadding + chartHeight * (1 - ratio)}
-            x2={width - rightPadding}
-            y2={topPadding + chartHeight * (1 - ratio)}
-            stroke="#e2e8f0"
-            strokeWidth={1}
-            strokeDasharray="4,4"
-          />
-        ))}
-
-        {/* Line path */}
-        <Path
-          d={pathData}
-          fill="none"
-          stroke={color}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Data points */}
-        {points.map((p, i) => (
-          <Circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r={4}
-            fill={color}
-          />
-        ))}
-
-        {/* X axis labels */}
-        {data.map((item, index) => {
-          if (index % Math.ceil(data.length / 6) !== 0 && index !== data.length - 1) return null;
-          return (
-            <Text
-              key={index}
-              x={points[index].x}
-              y={height - bottomPadding + 16}
-              textAnchor="middle"
-              fontSize={9}
-              fill="#64748b"
-            >
-              {item.label}
+    <View style={[styles.lineChartContainer, { height }]}>
+      {/* Grid lines */}
+      <View style={styles.gridLinesContainer}>
+        {[1, 0.5, 0].map((ratio) => (
+          <View key={ratio} style={styles.gridLineRow}>
+            <Text style={styles.gridLabel}>
+              {Math.round(min + (max - min) * ratio).toLocaleString()}
             </Text>
+            <View style={styles.gridLine} />
+          </View>
+        ))}
+      </View>
+
+      {/* Modern responsive trend columns with gradient fill */}
+      <View style={styles.trendColumnsRow}>
+        {data.map((item, index) => {
+          const val = item.value || 0;
+          const percentage = Math.min(
+            Math.max(((val - min) / (max - min || 1)) * 100, 6),
+            100,
+          );
+          const isPeak = val === max && max > 0;
+
+          return (
+            <View key={`${item.label}-${index}`} style={styles.trendColumn}>
+              {isPeak && (
+                <View style={styles.peakIndicator}>
+                  <Text style={styles.peakText}>Peak</Text>
+                </View>
+              )}
+              <View style={styles.trendBarTrack}>
+                <LinearGradient
+                  colors={
+                    isPeak
+                      ? ["#10b981", "rgba(16, 185, 129, 0.2)"]
+                      : [color, "rgba(22, 140, 245, 0.15)"]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={[
+                    styles.trendBarFill,
+                    {
+                      height: `${percentage}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.trendLabel} numberOfLines={1}>
+                {item.label}
+              </Text>
+            </View>
           );
         })}
-      </Svg>
+      </View>
     </View>
   );
 }
 
-export function DonutChart({ data, width = 200, height = 200, colors = ["#168cf5", "#0f766e", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"] }) {
-  const total = data.reduce((sum, d) => sum + d.value, 0);
-  const radius = Math.min(width, height) / 2 - 16;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const strokeWidth = 24;
-
-  const segments = data.map((item, index) => {
-    const percentage = total > 0 ? item.value / total : 0;
-    const angle = percentage * 360;
-    const startAngle = data.slice(0, index).reduce((sum, d) => sum + (total > 0 ? d.value / total : 0), 0) * 360;
-    const endAngle = startAngle + angle;
-
-    const startRad = (startAngle - 90) * (Math.PI / 180);
-    const endRad = (endAngle - 90) * (Math.PI / 180);
-
-    const largeArcFlag = angle > 180 ? 1 : 0;
-
-    const x1 = centerX + radius * Math.cos(startRad);
-    const y1 = centerY + radius * Math.sin(startRad);
-    const x2 = centerX + radius * Math.cos(endRad);
-    const y2 = centerY + radius * Math.sin(endRad);
-
-    return (
-      <Path
-        key={index}
-        d={`M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`}
-        fill={colors[index % colors.length]}
-      />
-    );
-  });
+export function DonutChart({
+  data = [],
+  colors = [
+    "#168cf5",
+    "#10b981",
+    "#f59e0b",
+    "#ef4444",
+    "#8b5cf6",
+    "#ec4899",
+  ],
+}) {
+  const total = data.reduce((sum, d) => sum + (d.value || 0), 0);
 
   return (
-    <View style={{ width, height }}>
-      <Svg width={width} height={height}>
-        {segments}
-        <Circle
-          cx={centerX}
-          cy={centerY}
-          r={radius - strokeWidth}
-          fill="#fff"
-        />
-        <Text
-          x={centerX}
-          y={centerY - 4}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={24}
-          fontWeight="bold"
-          fill="#0f172a"
-        >
-          {total.toLocaleString()}
-        </Text>
-        <Text
-          x={centerX}
-          y={centerY + 20}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={11}
-          fill="#64748b"
-        >
-          Total
-        </Text>
-      </Svg>
+    <View style={styles.donutContainer}>
+      {/* Total Counter Summary */}
+      <View style={styles.donutCenterCard}>
+        <Text style={styles.donutTotal}>{total.toLocaleString()}</Text>
+        <Text style={styles.donutSubtitle}>Total Items</Text>
+      </View>
+
+      {/* Segmented multi-color progress bar */}
+      <View style={styles.segmentedBar}>
+        {data.map((item, index) => {
+          const pct = total > 0 ? ((item.value || 0) / total) * 100 : 0;
+          if (pct <= 0) return null;
+          const segColor = colors[index % colors.length];
+
+          return (
+            <View
+              key={`${item.label}-${index}`}
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                backgroundColor: segColor,
+              }}
+            />
+          );
+        })}
+      </View>
+
+      {/* Legend list */}
+      <View style={styles.donutLegend}>
+        {data.map((item, index) => {
+          const pct = total > 0 ? Math.round(((item.value || 0) / total) * 100) : 0;
+          const segColor = colors[index % colors.length];
+
+          return (
+            <View key={`${item.label}-${index}`} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: segColor }]} />
+              <Text style={styles.legendLabel} numberOfLines={1}>
+                {item.label}
+              </Text>
+              <Text style={styles.legendValue}>
+                {item.value.toLocaleString()} ({pct}%)
+              </Text>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -265,7 +195,7 @@ export function DonutChart({ data, width = 200, height = 200, colors = ["#168cf5
 export function StatRow({ label, value, trend, trendColor, color }) {
   return (
     <View style={styles.statRow}>
-      <View style={styles.statIcon} >
+      <View style={styles.statIcon}>
         <View style={[styles.statDot, { backgroundColor: color }]} />
       </View>
       <View style={styles.statContent}>
@@ -275,7 +205,8 @@ export function StatRow({ label, value, trend, trendColor, color }) {
           {trend !== undefined && (
             <View style={styles.trend}>
               <Text style={[styles.trendText, { color: trendColor }]}>
-                {trend >= 0 ? "+" : ""}{trend}%
+                {trend >= 0 ? "+" : ""}
+                {trend}%
               </Text>
             </View>
           )}
@@ -286,6 +217,175 @@ export function StatRow({ label, value, trend, trendColor, color }) {
 }
 
 const styles = StyleSheet.create({
+  barChartContainer: {
+    width: "100%",
+    position: "relative",
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  lineChartContainer: {
+    width: "100%",
+    position: "relative",
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  gridLinesContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "space-between",
+    paddingBottom: 24,
+  },
+  gridLineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  gridLabel: {
+    fontSize: 10,
+    color: "#64748b",
+    width: 34,
+    textAlign: "right",
+  },
+  gridLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(148, 163, 184, 0.2)",
+  },
+  barsRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginLeft: 42,
+    gap: 8,
+  },
+  barColumn: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  barTrack: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 28,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  barFill: {
+    width: "100%",
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  barLabel: {
+    marginTop: 6,
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#64748b",
+    textAlign: "center",
+  },
+  trendColumnsRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginLeft: 42,
+    gap: 6,
+  },
+  trendColumn: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    position: "relative",
+  },
+  peakIndicator: {
+    position: "absolute",
+    top: -14,
+    backgroundColor: "#10b981",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  peakText: {
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  trendBarTrack: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 24,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  trendBarFill: {
+    width: "100%",
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  trendLabel: {
+    marginTop: 6,
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#64748b",
+    textAlign: "center",
+  },
+  donutContainer: {
+    width: "100%",
+    alignItems: "center",
+    gap: 16,
+    paddingVertical: 8,
+  },
+  donutCenterCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  donutTotal: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  donutSubtitle: {
+    fontSize: 11,
+    color: "#64748b",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  segmentedBar: {
+    width: "100%",
+    height: 12,
+    borderRadius: 6,
+    overflow: "hidden",
+    flexDirection: "row",
+    backgroundColor: "rgba(148, 163, 184, 0.2)",
+  },
+  donutLegend: {
+    width: "100%",
+    gap: 8,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  legendLabel: {
+    flex: 1,
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  legendValue: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
   statRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -293,12 +393,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   statIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "rgba(148, 163, 184, 0.15)",
   },
   statDot: {
     width: 10,

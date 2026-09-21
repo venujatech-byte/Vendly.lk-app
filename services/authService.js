@@ -5,10 +5,12 @@ import {
   reload,
   signInWithCredential,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
   sendEmailVerification,
 } from "firebase/auth";
+import { Platform } from "react-native";
 
 import { auth } from "../firebase/firebaseConfig";
 
@@ -21,6 +23,10 @@ let isGoogleSignInConfigured = false;
 // working everywhere while a development build with the native module isn't
 // available yet.
 function loadGoogleSignInModule() {
+  if (Platform.OS === "web") {
+    return null;
+  }
+
   try {
     return require("@react-native-google-signin/google-signin");
   } catch {
@@ -33,7 +39,11 @@ function loadGoogleSignInModule() {
 }
 
 function configureGoogleSignIn() {
-  const { GoogleSignin } = loadGoogleSignInModule();
+  if (Platform.OS === "web") return null;
+
+  const mod = loadGoogleSignInModule();
+  if (!mod) return null;
+  const { GoogleSignin } = mod;
 
   if (isGoogleSignInConfigured) return GoogleSignin;
 
@@ -89,6 +99,12 @@ export async function loginWithEmail(email, password) {
 }
 
 export async function loginWithGoogle() {
+  if (Platform.OS === "web") {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  }
+
   const GoogleSignin = configureGoogleSignIn();
   const { isSuccessResponse } = loadGoogleSignInModule();
 
@@ -114,16 +130,25 @@ export async function loginWithGoogle() {
 }
 
 export async function logoutUser() {
-  if (isGoogleSignInConfigured) {
+  if (Platform.OS !== "web") {
     try {
-      const { GoogleSignin } = loadGoogleSignInModule();
-      await GoogleSignin.signOut();
-    } catch {
-      // Not signed in with Google, or the native module isn't linked.
+      if (isGoogleSignInConfigured) {
+        const mod = loadGoogleSignInModule();
+        if (mod && mod.GoogleSignin && typeof mod.GoogleSignin.signOut === "function") {
+          await mod.GoogleSignin.signOut();
+        }
+      }
+    } catch (err) {
+      console.log("Google signOut skipped or unavailable:", err?.message || err);
     }
   }
 
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error("Firebase signOut error:", error);
+    throw error;
+  }
 }
 
 export async function getCurrentUserToken(forceRefresh = false) {

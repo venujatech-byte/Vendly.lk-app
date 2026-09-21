@@ -1,5 +1,12 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Bell, Moon, Search, Settings, Sun } from "lucide-react-native";
+import {
+  Bell,
+  Moon,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+} from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -10,17 +17,20 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import BusinessAssistantModal from "./assistant/BusinessAssistantModal";
+import GlobalSearchModal from "./GlobalSearchModal";
+import NotificationsPanel from "./NotificationsPanel";
+import ProfileModal from "./settings/ProfileModal";
+import SettingsModal from "./settings/SettingsModal";
+import StorefrontInstructionsModal from "./settings/StorefrontInstructionsModal";
 import { useAuth } from "../context/authContextValue";
 import { useAppTheme } from "../context/ThemeContext";
-import { logoutUser } from "../services/authService";
 import {
   configureDeviceNotifications,
   markNotificationsAsSeen,
   notifyNewNotifications,
 } from "../services/deviceNotificationService";
 import { getNotifications } from "../services/notificationService";
-import GlobalSearchModal from "./GlobalSearchModal";
-import NotificationsPanel from "./NotificationsPanel";
 
 function businessInitials(name = "") {
   const words = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -34,6 +44,10 @@ export default function ScreenHeader({ title }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isStorefrontOpen, setIsStorefrontOpen] = useState(false);
 
   useEffect(() => {
     if (!business?.id) return undefined;
@@ -52,8 +66,6 @@ export default function ScreenHeader({ title }) {
         setUnreadCount(items.length);
 
         if (isFirstLoad) {
-          // Don't fire a burst of alerts for a backlog the seller may have
-          // already seen on the web dashboard.
           markNotificationsAsSeen(items);
           isFirstLoad = false;
           return;
@@ -61,7 +73,7 @@ export default function ScreenHeader({ title }) {
 
         notifyNewNotifications(items);
       } catch {
-        // Silently ignore — the badge just stays at its last known count.
+        // Silently ignore
       }
     }
 
@@ -74,17 +86,6 @@ export default function ScreenHeader({ title }) {
     };
   }, [business?.id]);
 
-  function openAvatarMenu() {
-    Alert.alert(
-      sellerProfile?.businessName ?? "Vendly",
-      sellerProfile?.ownerName ?? "",
-      [
-        { text: "Log out", style: "destructive", onPress: () => logoutUser() },
-        { text: "Cancel", style: "cancel" },
-      ],
-    );
-  }
-
   const styles = createStyles(colors, insets.top);
 
   return (
@@ -94,35 +95,41 @@ export default function ScreenHeader({ title }) {
       </Text>
 
       <View style={styles.actions}>
+        {/* AI Assistant Button */}
+        <TouchableOpacity
+          style={[styles.iconButton, styles.aiButton]}
+          onPress={() => setIsAssistantOpen(true)}
+        >
+          <Sparkles size={18} color="#ffffff" />
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.iconButton}
           onPress={() => setIsSearchOpen(true)}
         >
-          <Search size={20} color={colors.text} />
+          <Search size={19} color={colors.text} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.iconButton} onPress={toggleTheme}>
           {theme === "dark" ? (
-            <Sun size={20} color={colors.text} />
+            <Sun size={19} color={colors.text} />
           ) : (
-            <Moon size={20} color={colors.text} />
+            <Moon size={19} color={colors.text} />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.iconButton}
-          onPress={() =>
-            Alert.alert("Settings", "Staff settings are coming soon to the mobile app.")
-          }
+          onPress={() => setIsSettingsOpen(true)}
         >
-          <Settings size={20} color={colors.text} />
+          <Settings size={19} color={colors.text} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.iconButton}
           onPress={() => setIsNotificationsOpen(true)}
         >
-          <Bell size={20} color={colors.text} />
+          <Bell size={19} color={colors.text} />
           {unreadCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
@@ -132,7 +139,7 @@ export default function ScreenHeader({ title }) {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={openAvatarMenu}>
+        <TouchableOpacity onPress={() => setIsProfileOpen(true)}>
           <LinearGradient
             colors={["#0d5fa9", "#073665"]}
             start={{ x: 0, y: 0 }}
@@ -140,7 +147,7 @@ export default function ScreenHeader({ title }) {
             style={styles.avatar}
           >
             <Text style={styles.avatarText}>
-              {businessInitials(sellerProfile?.businessName)}
+              {businessInitials(sellerProfile?.businessName || business?.name)}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -155,6 +162,35 @@ export default function ScreenHeader({ title }) {
       <GlobalSearchModal
         visible={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+      />
+
+      <SettingsModal
+        visible={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+
+      <ProfileModal
+        visible={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        onOpenSettings={() => {
+          setIsProfileOpen(false);
+          setIsSettingsOpen(true);
+        }}
+        onOpenStorefront={() => {
+          setIsProfileOpen(false);
+          setIsStorefrontOpen(true);
+        }}
+      />
+
+      <BusinessAssistantModal
+        visible={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+      />
+
+      <StorefrontInstructionsModal
+        visible={isStorefrontOpen}
+        onClose={() => setIsStorefrontOpen(false)}
+        business={business}
       />
     </View>
   );
@@ -190,6 +226,10 @@ function createStyles(colors, topInset) {
       borderRadius: 17,
       alignItems: "center",
       justifyContent: "center",
+    },
+    aiButton: {
+      backgroundColor: colors.accent,
+      marginRight: 2,
     },
     badge: {
       position: "absolute",

@@ -19,6 +19,7 @@ let isConfigured = false;
 const alreadyNotifiedIds = new Set();
 
 export async function configureDeviceNotifications() {
+  if (Platform.OS === "web") return;
   if (!Notifications || isConfigured) return;
 
   Notifications.setNotificationHandler({
